@@ -1,0 +1,5 @@
+(load "quicklisp/setup")
+(ql:quickload "pzmq")
+(ql:quickload "bordeaux-threads")
+(ql:quickload "uuid")
+(ql:quickload "cl-base64")
