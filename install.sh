@@ -157,6 +157,7 @@ echo ----------------------------------------
 echo Install Jupyer Kernel Spec : kernel.json
 echo ----------------------------------------
 
+mkdir ./ifricas
 kspec=./ifricas/kernel.json
 
 echo '{"argv": ['"\"$install_dir/iSPAD\""',"{connection_file}"],' > $kspec
