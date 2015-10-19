@@ -157,6 +157,17 @@ echo ----------------------------------------
 echo Install Jupyer Kernel Spec : kernel.json
 echo ----------------------------------------
 
+kspec=./ifricas/kernel.json
+
+echo '{"argv": ['"\"$install_dir/iSPAD\""',"{connection_file}"],' > $kspec
+echo '"codemirror_mode": "shell",' >> $kspec
+echo '"display_name": "FriCAS",' >> $kspec
+echo '"language": "spad"}' >> $kspec
+echo kernel.json written to $kspec
+echo
+
+
+
 if jupyter kernelspec install --user ./ifricas ; then
     jupyter kernelspec list ;
     echo $kernel_spec_ok ; 
