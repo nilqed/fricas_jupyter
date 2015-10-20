@@ -2,7 +2,7 @@
 
 #;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 # __author__ = "Kurt Pagani <nilqed@gmail.com>"
-# __svn_id__ = "$Id: setup 1 2015-10-17 23:14:11Z pagani $"
+# __svn_id__ = "$Id: setup 2 2015-10-20 02:42:11Z pagani $"
 #;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 #
 # iSPAD Installation  
@@ -157,7 +157,10 @@ echo ----------------------------------------
 echo Install Jupyer Kernel Spec : kernel.json
 echo ----------------------------------------
 
-mkdir ./ifricas
+if [ ! -d "./ifricas" ]; then
+    mkdir ./ifricas ;
+fi
+
 kspec=./ifricas/kernel.json
 
 echo '{"argv": ['"\"$install_dir/iSPAD\""',"{connection_file}"],' > $kspec
@@ -165,7 +168,6 @@ echo '"codemirror_mode": "shell",' >> $kspec
 echo '"display_name": "FriCAS",' >> $kspec
 echo '"language": "spad"}' >> $kspec
 echo kernel.json written to $kspec
-echo
 
 
 
