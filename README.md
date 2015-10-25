@@ -116,6 +116,16 @@ and can be deleted (if wished so).
     After that, any 'interrupt' only shows a message and ignores the debugger.
     ```
 
+#### Docker (automated build)
+There is a docker image at https://hub.docker.com/r/nilqed/fricas_jupyter/
+
+
+    docker pull nilqed/fricas_jupyter
+    docker run -p 443:8888  -t -i nilqed/fricas_jupyter jupyter notebook
+    go to http://localhost:443
+    New -> FriCAS
+
+
 ---
 Development: [iSPAD](https://bitbucket.org/kfp/ispad) 
 

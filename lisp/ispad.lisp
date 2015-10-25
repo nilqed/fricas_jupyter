@@ -145,6 +145,9 @@
 ;;;   +++ Aldor: #<SB-KERNEL:PARSE-UNKNOWN-TYPE {1007D5DC13}>
 ;;;   +++ Evaluator: in function eval-code -> handling-errors disabled
 ;;;   +++ Error handling linked to Fricas system.
+;;;   --- (+) reverted, but on watch list. 
+;;;   - In function "render-latex": 
+;;;     changed "(if (> (length tex) 0)" by  "(if boot::|$texFormat|" 
 ;;;
 ;;;   Version 1.0
 ;;;   soon ;-)
@@ -1262,7 +1265,8 @@ to be displayed by the Fishbowl/IPython frontend."))
 
 (defmethod render-latex ((value t))
   (let ((tex (get-tex value)))
-     (if (> (length tex) 0) 
+     ;(if (> (length tex) 0)
+     (if boot::|$texFormat|
         (if (not (has-type value)) tex
            (let ((ts (get-type value)))
                (concstr (list *pretex* 
@@ -1532,12 +1536,12 @@ to be displayed by the Fishbowl/IPython frontend."))
 	 (let ((results (with-output-to-string (stdout stdout-str)
 	    (with-output-to-string (stderr stderr-str)
 	      (let ((*standard-output* stdout) (*error-output* stderr))
-		      ;(handling-errors
+		      (handling-errors
 		        (let ((*evaluator* evaluator))       
 			      (multiple-value-list 
 		           ;;; EVAL
                     (ispad-eval code)))
-              ;) 
+              ) 
    ))))) 
    ;;
    (vector-push-extend code (evaluator-history-in evaluator))
