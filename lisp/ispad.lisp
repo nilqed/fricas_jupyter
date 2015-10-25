@@ -2,7 +2,7 @@
 ;;; iSPAD - Jupyter kernel for SPAD clients (FriCAS, Axiom, OpenAxiom)
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; __author__ = "Kurt Pagani <nilqed@gmail.com>"
-;;; __svn_id__ = "$Id: ispad.lisp 9 2015-09-16 9:23:11Z pagani $"
+;;; __svn_id__ = "$Id: ispad.lisp 9 2015-10-24 3:28:52Z pagani $"
 ;;;
 ;;; Credits
 ;;; -------
@@ -128,10 +128,26 @@
 ;;;
 ;;;   Version 0.9.3
 ;;;   - Removed "quicklisp" / created new file "quick.lisp"
-;;;   - 
+;;;   - Install version @ https://github.com/nilqed/fricas_jupyter
+;;;   - Docker version  @ https://hub.docker.com/r/nilqed/fricas_jupyter/
+;;;     automated build from GitGub (source sync to ispad.lisp)
+;;;
+;;;   Version 0.9.4
+;;;   - Patches 220d037 from cl-jupyter (evaluator injected in eval)
+;;;   -- New: (defvar *evaluator* nil)
+;;;   - Patches 843d4db from cl-jupyter (evaluator/user)
+;;;   -- New: history management (%in/%out)
+;;;   - Up to 843d4db sync 
+;;;     "progn" not helpful, quo: warnings as errors? I leave it f.t.m. 
+;;;   - Debugger hook does not work in the "load" version, whatever the 
+;;;     value of *debugger-hook* is set to. However, it works in the 
+;;;     "binary" version.
+;;;   +++ Aldor: #<SB-KERNEL:PARSE-UNKNOWN-TYPE {1007D5DC13}>
+;;;   +++ Evaluator: in function eval-code -> handling-errors disabled
+;;;   +++ Error handling linked to Fricas system.
 ;;;
 ;;;   Version 1.0
-;;;   ;-)
+;;;   soon ;-)
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -231,9 +247,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;; Config ;;;
 ;;;;;;;;;;;;;;
 (defparameter +KERNEL-IMPLEMENTATION-NAME+ "cl-jupyter")
-(defparameter +KERNEL-IMPLEMENTATION-VERSION+ "0.6")
+(defparameter +KERNEL-IMPLEMENTATION-VERSION+ "0.7")
 (defparameter +KERNEL-PROTOCOL-VERSION+ "5.0")
-(defparameter +ISPAD-VERSION+ "0.9.3 :: 01-OCT-2015")
+(defparameter +ISPAD-VERSION+ "0.9.4 :: 24-OCT-2015")
 
 
 ;;;;;;;;;;;;;
@@ -1452,6 +1468,8 @@ to be displayed by the Fishbowl/IPython frontend."))
    (history-out :initform (make-array 64 :fill-pointer 0 :adjustable t)
 		:reader evaluator-history-out)))
 
+;;; clj 220d037
+(defvar *evaluator* nil)
 
 (defun make-evaluator (kernel)
   (let ((evaluator (make-instance 'evaluator
@@ -1461,11 +1479,9 @@ to be displayed by the Fishbowl/IPython frontend."))
 
 
 ;;; macro taken from: http://www.cliki.net/REPL
-(defmacro handling-errors (&body body)
+;;; modified to handle warnings correctly 
+(defmacro handling-errors-old (&body body)
   `(handler-case (progn ,@body)
-     ;;;(sb-sys:interactive-interrupt ()
-       ;;;(format *error-output*  "Interrupt handler.~%")
-       ;;;(sb-ext:quit))
      (simple-condition (err) 
        (format *error-output* "~&~A: ~%" (class-name (class-of err)))
        (apply (function format) *error-output*
@@ -1476,25 +1492,55 @@ to be displayed by the Fishbowl/IPython frontend."))
        (format *error-output* "~&~A: ~%  ~S~%"
                (class-name (class-of err)) err))))
 
+;;; new version 3a2e8f7
+(defmacro handling-errors (&body body)
+  `(handler-case
+       (handler-bind ((simple-warning
+		       #'(lambda (wrn)
+			   (format *error-output* "~&~A: ~%" (class-name (class-of wrn)))
+			   (apply (function format) *error-output*
+				  (simple-condition-format-control   wrn)
+				  (simple-condition-format-arguments wrn))
+			   (format *error-output* "~&")
+			   (muffle-warning)))
+		      (warning
+		       #'(lambda (wrn)
+			   (format *error-output* "~&~A: ~%  ~S~%"
+				   (class-name (class-of wrn)) wrn)
+			   (muffle-warning))))
+	 (progn ,@body))
+     (simple-condition (err)
+       (format *error-output* "~&~A: ~%" (class-name (class-of err)))
+       (apply (function format) *error-output*
+              (simple-condition-format-control   err)
+              (simple-condition-format-arguments err))
+       (format *error-output* "~&"))
+     (condition (err)
+       (format *error-output* "~&~A: ~%  ~S~%"
+               (class-name (class-of err)) err))))
 
-;;; update: b244f0c
+
+
+;;; update: b244f0c, 843d4db
 (defun evaluate-code (evaluator code)
   ;;(format t "[Evaluator] Code to evaluate: ~W~%" code)
-  (vector-push-extend code (evaluator-history-in evaluator))
+  ;;(vector-push-extend code (evaluator-history-in evaluator))
   (let ((execution-count (length (evaluator-history-in evaluator))))
     (let ((code-to-eval code))
       (let* ((stdout-str (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
 	     (stderr-str (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)))
 	 (let ((results (with-output-to-string (stdout stdout-str)
 	    (with-output-to-string (stderr stderr-str)
-	      (let ((*standard-output* stdout)
-		    (*error-output* stderr))
-		      (handling-errors
-			(multiple-value-list 
-	       ;;; EVAL
-               (ispad-eval code)
-   ))))))) 
+	      (let ((*standard-output* stdout) (*error-output* stderr))
+		      ;(handling-errors
+		        (let ((*evaluator* evaluator))       
+			      (multiple-value-list 
+		           ;;; EVAL
+                    (ispad-eval code)))
+              ;) 
+   ))))) 
    ;;
+   (vector-push-extend code (evaluator-history-in evaluator))
    (vector-push-extend results (evaluator-history-out evaluator))
    (values execution-count results stdout-str stderr-str))))))
 
@@ -1586,6 +1632,27 @@ to be displayed by the Fishbowl/IPython frontend."))
     (display-svg (make-instance 'svg-str :str str))))
 
 
+;;; History management
+
+(defun %in (hist-ref)
+  (let ((history-in (slot-value cl-jupyter::*evaluator* 'cl-jupyter::history-in)))
+    (if (and (>= hist-ref 0)
+	     (< hist-ref (length history-in))) 
+	(aref history-in hist-ref)
+	nil)))
+
+(defun %out (hist-ref &optional (value-ref 0))
+  (let ((history-out (slot-value cl-jupyter::*evaluator* 'cl-jupyter::history-out)))
+    (if (and (>= hist-ref 0)
+	     (< hist-ref (length history-out)))
+	(let ((out-values  (aref history-out hist-ref)))
+	  (if (and (>= value-ref 0)
+		   (< value-ref (length out-values))) 
+	      (elt out-values value-ref)
+	      nil)))))
+
+
+
 ;;;;;;;;;;;;;;
 ;;; Kernel ;;;
 ;;;;;;;;;;;;;;
@@ -1657,7 +1724,7 @@ to be displayed by the Fishbowl/IPython frontend."))
    (hb-port :initarg :hb-port :reader config-hb-port :type fixnum)
    (signature-scheme :initarg :signature-scheme :reader config-signature-scheme :type string)
    (key :initarg :key :reader kernel-config-key))) 
-   
+
 
 (defun kernel-start (connect-file)
   (let ((cmd-args (get-argv)))
@@ -1709,7 +1776,7 @@ to be displayed by the Fishbowl/IPython frontend."))
 		(let ((heartbeat-thread-id (start-heartbeat hb-socket)))
 		  ;; main loop
 		  (unwind-protect
-		       (format t "[Kernel] Entering mainloop ...~%")
+		       (format t "[Kernel] Entering mainloop ... ~%")
 		       (shell-loop shell)
 		    ;; clean up when exiting
 		    (bordeaux-threads:destroy-thread heartbeat-thread-id)
@@ -1723,7 +1790,7 @@ to be displayed by the Fishbowl/IPython frontend."))
 (defun start-heartbeat (socket)
   (let ((thread-id (bordeaux-threads:make-thread
 		    (lambda ()
-		      (format t "[Heartbeat] thread started~%")
+		      (format t "[Heartbeat] thread started ~%")
 		      (loop
 			 (pzmq:with-message msg
 			   (pzmq:msg-recv msg socket)
