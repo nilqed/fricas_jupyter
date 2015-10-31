@@ -145,9 +145,27 @@
 ;;;   +++ Aldor: #<SB-KERNEL:PARSE-UNKNOWN-TYPE {1007D5DC13}>
 ;;;   +++ Evaluator: in function eval-code -> handling-errors disabled
 ;;;   +++ Error handling linked to Fricas system.
+;;;   Note: to use ALDOR: export ALDOR_COMPILER=aldor & AXIOM=/...
 ;;;   --- (+) reverted, but on watch list. 
 ;;;   - In function "render-latex": 
 ;;;     changed "(if (> (length tex) 0)" by  "(if boot::|$texFormat|" 
+;;;   +++ Temptative:
+;;;   - New (boolean) parameter *cl-guard*. To execute Aldor code set
+;;;     )lisp (setq cl-jupyter::*cl-guard* nil)
+;;;   - In section "Evaluator", function "evaluate-code": )co, )lib and
+;;;     *cl-guard*=nil are evaluated without "handling-errors". 
+;;;   - Allow several ")..." commands in one cell 
+;;;     (cond starts-with-p: disabled in pre-process)
+;;;     Starting with "$" still reserved!
+;;;   - Note: After updating SBCL one has to run "setup.sh" again
+;;;     since there is a different ".cache" for each SBCL version.
+;;;
+;;;   Version 0.9.5 
+;;;   - Section Display - rendering
+;;;   -- new functions: filename-type-p, render-filename
+;;;   -- simplified all render-[format] functions
+;;;   -- new: jupyter.spad interface to iSPAD (jDraw,...)
+;;;   -- tidy up of render/display, temp reverted "handling-errors" macro.
 ;;;
 ;;;   Version 1.0
 ;;;   soon ;-)
@@ -239,7 +257,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    #:display-svg render-svg
    #:display-json render-json
    #:display-javascript render-javascript
-   #:html #:latex #:svg
+   #:html #:latex #:svg #:markdown
    #:png-from-file
    #:svg-from-file
    #:quit))
@@ -1045,9 +1063,13 @@ The INDENT can be given for beautiful/debugging output (default is NIL
            ")read /tmp/tmp.input )quiet )ifthere")  
          code)))
 
+;;; work-around: 0.9.4
+(defparameter *cl-guard* t)  ;;; in evaluate-code (guard on/off) 
+;;;    
+ 
 (defun pre-process (code)
     (cond 
-      ((starts-with-p code ")") code)
+      ;((starts-with-p code ")") code)
       ((starts-with-p code "$") "output(reserved!)")
       (t (code-to-eval code))))
 
@@ -1190,9 +1212,10 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 to be displayed by the Fishbowl/IPython frontend."))
 
 
+;;; start sub_section: render-xxx
+
 (defgeneric render-plain (value)
   (:documentation "Render the VALUE as plain text (default rendering)."))
-
 
 (defmethod render-plain ((value t))
   ;; Lisp printer by default
@@ -1200,38 +1223,6 @@ to be displayed by the Fishbowl/IPython frontend."))
   (let ((alg (concstr (car value))))
     (if (stringp alg) alg
       (format nil "~S" alg))))
-
-(defgeneric render-html (value)
-  (:documentation "Render the VALUE as an HTML document (represented as a sting)."))
-
-(defmethod render-html ((value t))
-  (if (has-type value)
-    (if (string-equal (get-type value) "FileName") 
-       (if (not boot::|$texFormat|)  
-          (let* ((filename (string-trim "\" " (caar value))))
-             (if (probe-file filename) 
-               (if (string-equal (pathname-type filename) "html") 
-                    (read-string-file filename) nil)
-               nil))
-                 nil)
-                   nil)
-                     nil))
-
-(defgeneric render-markdown (value)
-  (:documentation "Render the VALUE as MARDOWN text."))
-
-(defmethod render-markdown ((value t))
-  (if (has-type value)
-    (if (string-equal (get-type value) "FileName") 
-       (if (not boot::|$texFormat|)  
-          (let* ((filename (string-trim "\" " (caar value))))
-             (if (probe-file filename) 
-               (if (string-equal (pathname-type filename) "md") 
-                    (read-string-file filename) nil)
-               nil))
-                 nil)
-                   nil)
-                     nil))
 
 
 (defgeneric render-latex (value)
@@ -1258,26 +1249,25 @@ to be displayed by the Fishbowl/IPython frontend."))
            (let ((ts (get-type result)))
                (concstr (list tex "\\(\\\\" ts "\\)")))) nil )))
 
-;;; --<
 
-;;; assuming boot::|$texFormat| = t
-;;; improving repr later, centering? ...
+
+;;;
+;;; New 0.9.5 (check if has Type: FileName)
+;;;
+(defun filename-type-p (value)
+  (if (has-type value)
+    (if (string-equal (get-type value) "FileName") t nil) nil))  
+
 
 (defmethod render-latex ((value t))
-  (let ((tex (get-tex value)))
-     ;(if (> (length tex) 0)
-     (if boot::|$texFormat|
-        (if (not (has-type value)) tex
-           (let ((ts (get-type value)))
+    (if (filename-type-p value) nil
+      (let ((tex (get-tex value)))
+         (if boot::|$texFormat|
+           (if (has-type value)
+             (let ((ts (get-type value)))
                (concstr (list *pretex* 
-                  ;"<div style=\"text-align: center\">"
                   (format nil "~A" tex) 
-                  ;"</div>" 
-                  ;"<center>" 
-                  (format nil *type-format* ts) 
-                  ;"</center>" 
-                  )))) 
-         nil)))  
+                  (format nil *type-format* ts)))) nil)))))
          
          
 (defgeneric render-png (value)
@@ -1292,77 +1282,69 @@ to be displayed by the Fishbowl/IPython frontend."))
 ;;;
 
 (defmethod render-png ((value t))
-  (if (has-type value)
-    (if (string-equal (get-type value) "FileName") 
-       (if (not boot::|$texFormat|)  
-          (let* ((filename (string-trim "\" " (caar value))))
-             (if (probe-file filename) 
-               (if (string-equal (pathname-type filename) "png")
-                  (cl-base64:usb8-array-to-base64-string 
-                       (read-binary-file filename)) nil)
-               nil))
-                 nil)
-                   nil)
-                     nil))
-          
+  (if (filename-type-p value)
+      (let* ((filename (string-trim "\" " (caar value))))
+        (if (probe-file filename) 
+           (if (string-equal (pathname-type filename) "png")
+              (cl-base64:usb8-array-to-base64-string 
+              (read-binary-file filename)) nil)
+            nil)) 
+              nil))
+              
 
 (defgeneric render-jpeg (value)
   (:documentation "Render the VALUE as a JPEG image. The expected
  encoding is a Base64-encoded string."))
 
 (defmethod render-jpeg ((value t))
-  ;; no rendering by default
+  ;; no rendering yet
   nil)
+
+;;;
+;;; New 0.9.5 (render coerced ::FileType)
+;;;
+(defun render-filename (value file-type)
+  (if (filename-type-p value) 
+    (let* ((filename (string-trim "\" " (caar value))))
+      (if (probe-file filename) 
+        (if (string-equal (pathname-type filename) file-type) 
+          (read-string-file filename) nil)
+            nil))
+              nil))    
+
 
 (defgeneric render-svg (value)
   (:documentation "Render the VALUE as a SVG image (XML format represented as a string)."))
 
 (defmethod render-svg ((value t))
-  (if (has-type value)
-    (if (string-equal (get-type value) "FileName") 
-       (if (not boot::|$texFormat|)  
-          (let* ((filename (string-trim "\" " (caar value))))
-             (if (probe-file filename) 
-               (if (string-equal (pathname-type filename) "svg") 
-                    (read-string-file filename) nil)
-               nil))
-                 nil)
-                   nil)
-                     nil))
-
+  (render-filename value "svg"))
+               
 (defgeneric render-json (value)
   (:documentation "Render the VALUE as a JSON document. This uses the MYJSON encoding
  (alist with string keys)"))
 
 (defmethod render-json ((value t))
-  (if (has-type value)
-    (if (string-equal (get-type value) "FileName") 
-       (if (not boot::|$texFormat|)  
-          (let* ((filename (string-trim "\" " (caar value))))
-             (if (probe-file filename) 
-               (if (string-equal (pathname-type filename) "json") 
-                    (read-string-file filename) nil)
-               nil))
-                 nil)
-                   nil)
-                     nil))
-
+  (render-filename value "json"))
+                    
 (defgeneric render-javascript (value)
   (:documentation "Render the VALUE as a JAVASCRIPT source (represented as a string)."))
 
 (defmethod render-javascript ((value t))
-  (if (has-type value)
-    (if (string-equal (get-type value) "FileName") 
-       (if (not boot::|$texFormat|)  
-          (let* ((filename (string-trim "\" " (caar value))))
-             (if (probe-file filename) 
-               (if (string-equal (pathname-type filename) "js") 
-                    (read-string-file filename) nil)
-               nil))
-                 nil)
-                   nil)
-                     nil))
+  (render-filename value "js"))
 
+(defgeneric render-html (value)
+  (:documentation "Render the VALUE as an HTML document (represented as a sting)."))
+
+(defmethod render-html ((value t))
+  (render-filename value "html"))
+
+(defgeneric render-markdown (value)
+  (:documentation "Render the VALUE as MARDOWN text."))
+
+(defmethod render-markdown ((value t))
+   (render-filename value "md"))
+
+;;; end render
 
 (defun combine-render (pairs)
   (loop 
@@ -1434,7 +1416,9 @@ to be displayed by the Fishbowl/IPython frontend."))
     (let ((tmpout (make-string-output-stream))
            (save boot::|$texOutputStream|))
         (setq boot::|$texOutputStream| tmpout)
+        ;(setq boot::|$IOindex| nil)
         (let ((alg (boot::|parseAndEvalToString| s))
+        ;(let ((alg (boot::|parseAndInterpToString| s))
               (tex (get-output-stream-string boot::|$texOutputStream|)))
           (setq boot::|$texOutputStream| save)
             (list alg tex)))))
@@ -1484,7 +1468,7 @@ to be displayed by the Fishbowl/IPython frontend."))
 
 ;;; macro taken from: http://www.cliki.net/REPL
 ;;; modified to handle warnings correctly 
-(defmacro handling-errors-old (&body body)
+(defmacro handling-errors (&body body)
   `(handler-case (progn ,@body)
      (simple-condition (err) 
        (format *error-output* "~&~A: ~%" (class-name (class-of err)))
@@ -1496,8 +1480,8 @@ to be displayed by the Fishbowl/IPython frontend."))
        (format *error-output* "~&~A: ~%  ~S~%"
                (class-name (class-of err)) err))))
 
-;;; new version 3a2e8f7
-(defmacro handling-errors (&body body)
+;;; new version 3a2e8f7 (deferred)
+(defmacro handling-errors-2 (&body body)
   `(handler-case
        (handler-bind ((simple-warning
 		       #'(lambda (wrn)
@@ -1536,14 +1520,15 @@ to be displayed by the Fishbowl/IPython frontend."))
 	 (let ((results (with-output-to-string (stdout stdout-str)
 	    (with-output-to-string (stderr stderr-str)
 	      (let ((*standard-output* stdout) (*error-output* stderr))
-		      (handling-errors
-		        (let ((*evaluator* evaluator))       
-			      (multiple-value-list 
-		           ;;; EVAL
-                    (ispad-eval code)))
-              ) 
+	          (if (or (starts-with-p code ")co") 
+	                  (starts-with-p code ")lib")
+	                  (not *cl-guard*))
+	             (multiple-value-list (ispad-eval code)) 
+		         (handling-errors
+		           (let ((*evaluator* evaluator))       
+			         (multiple-value-list (ispad-eval code))))) 
    ))))) 
-   ;;
+   ;;EVAL
    (vector-push-extend code (evaluator-history-in evaluator))
    (vector-push-extend results (evaluator-history-out evaluator))
    (values execution-count results stdout-str stderr-str))))))
@@ -1810,6 +1795,8 @@ to be displayed by the Fishbowl/IPython frontend."))
 ;;;;;;;;;;;;
 
 ;(in-package #:boot)
+;(import 'cl-jupyter-user:html)
+;(import 'cl-jupyter-user:markdown)
 
 
         
