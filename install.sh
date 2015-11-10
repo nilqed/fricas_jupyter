@@ -20,7 +20,20 @@
 #;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 # Install iSPAD to ...
-install_dir="$HOME/.local/bin"
+# Thanks to Ralf Hemmecke ... usage: install.sh --prefix 
+prefix=$HOME/.local
+while [ "$*" != "" ] ; do
+    case $1 in
+        --prefix)
+            if [ "$2" = "" ] ; then
+                echo "--prefix has no directory value." ; fi
+            shift
+            prefix="$1"
+            ;;
+    esac
+    shift
+done
+install_dir="$prefix/bin"
 
 # Messages
 fricas_in_path="FriCAS in path ... ok."

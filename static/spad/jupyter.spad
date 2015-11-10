@@ -1,0 +1,90 @@
+)abbrev package JUPY jupyter
+++ Author:
+++ Date Created: 
+++ License: 
+++ Date Last Updated:
+++ Basic Operations:
+++ Related Domains:
+++ Also See:
+++ AMS Classifications:
+++ Keywords:
+++ Examples:
+++ References:
+++
+++ Description:
+++ 
+++
+jupyter() : Exports == Implementation where
+
+  DF  ==> DoubleFloat
+  EF  ==> Expression Float
+  LDF ==> List DoubleFloat
+  SBF ==> SegmentBinding Float
+
+  Exports ==  with
+
+    jHtml : String -> FileName
+      ++ html display in ispad
+
+    jMarkdown : String -> FileName
+      ++ markdown display in ispad
+      
+    jLatex : String -> FileName
+      ++ latex display in ispad
+
+    jJavascript : String -> FileName
+      ++ javascript display in ispad
+
+    jDraw : (EF,SBF) -> FileName
+      ++ GnuDraw 2D in Notebook
+                 
+    jDraw : (EF,SBF,SBF) -> FileName
+      ++ GnuDraw 3D in Notebook
+
+    jDrawXY : (LDF,LDF) -> FileName
+      ++ GnuDraw 2D - (x,y) lists
+
+
+  Implementation ==  add
+
+    htmlFile:String := "/tmp/jhtml.html"
+    mdFile:String   := "/tmp/jmd.md"
+    texFile:String  := "/tmp/jtex.tex"
+    jsFile:String   := "/tmp/jjs.js"
+
+    jFormat(s:String,f:String):FileName == 
+      f1:TextFile:=open(f::FileName,"output")
+      write!(f1,s)
+      close!(f1)
+      f::FileName
+
+    jHtml(s)       == jFormat(s,htmlFile)
+    jMarkdown(s)   == jFormat(s,mdFile)
+    jLatex(s)      == jFormat(s,texFile)
+    jJavascript(s) == jFormat(s,jsFile)
+
+    -- jDraw
+
+    outFile:String := "/tmp/gd.dat"
+    pngFile:String := "/tmp/gd.png"
+    gplOpts:String := "'set terminal png'"
+    sysGplt:String := "system gnuplot -e"
+    sysPcmd:String := concat [sysGplt," ",gplOpts," ",outFile," > ",pngFile]
+
+    jDraw(f,r) ==
+      gnuDraw(f,r,outFile)$GnuDraw
+      systemCommand(sysPcmd)$MoreSystemCommands
+      return pngFile::FileName  
+
+    jDraw(f,r,s) ==
+      gnuDraw(f,r,s,outFile)$GnuDraw
+      systemCommand(sysPcmd)$MoreSystemCommands
+      return pngFile::FileName
+
+    jDrawXY(x:List(DF),y:List(DF)):FileName ==
+      gnuDraw(x,y,outFile)$GnuDraw
+      systemCommand(sysPcmd)$MoreSystemCommands
+      return pngFile::FileName  
+
+
+    
