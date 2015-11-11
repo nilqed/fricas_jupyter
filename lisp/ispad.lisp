@@ -167,6 +167,11 @@
 ;;;   -- new: jupyter.spad interface to iSPAD (jDraw,...)
 ;;;   -- tidy up of render/display, temp reverted "handling-errors" macro.
 ;;;
+;;;   Version 0.9.6
+;;;   - Section Shell: new string parameter *tmp-ispad* to resolve SMC
+;;;     problem of different process rights.
+;;;
+;;;
 ;;;   Version 1.0
 ;;;   soon ;-)
 ;;;
@@ -270,7 +275,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (defparameter +KERNEL-IMPLEMENTATION-NAME+ "cl-jupyter")
 (defparameter +KERNEL-IMPLEMENTATION-VERSION+ "0.7")
 (defparameter +KERNEL-PROTOCOL-VERSION+ "5.0")
-(defparameter +ISPAD-VERSION+ "0.9.4 :: 24-OCT-2015")
+(defparameter +ISPAD-VERSION+ "0.9.6 :: 08-NOV-2015")
+
 
 
 ;;;;;;;;;;;;;
@@ -826,6 +832,8 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 
 (in-package #:cl-jupyter)
 
+(defparameter *tmp-ispad* (format nil ".tmp-ispad-~S.input" (random 100000)))
+
 
 (defclass shell-channel ()
   ((kernel :initarg :kernel :reader shell-kernel)
@@ -1058,13 +1066,14 @@ The INDENT can be given for beautiful/debugging output (default is NIL
     (let ((nl (count #\newline code)))
       (if (> nl 0) 
         (when t (with-open-file 
-          (stream "/tmp/tmp.input" :direction :output :if-exists :supersede)
+          (stream *tmp-ispad* :direction :output :if-exists :supersede)
           (format stream code))
-           ")read /tmp/tmp.input )quiet )ifthere")  
+           (format nil ")read ~S )quiet )ifthere" *tmp-ispad*))  
          code)))
 
 ;;; work-around: 0.9.4
-(defparameter *cl-guard* t)  ;;; in evaluate-code (guard on/off) 
+(defparameter *cl-guard* t)  
+;;; in evaluate-code (guard on/off) 
 ;;;    
  
 (defun pre-process (code)
@@ -1073,8 +1082,6 @@ The INDENT can be given for beautiful/debugging output (default is NIL
       ((starts-with-p code "$") "output(reserved!)")
       (t (code-to-eval code))))
 
-
-;;; -NEW
 
 
 (defun handle-execute-request (shell identities msg buffers)
@@ -1793,10 +1800,8 @@ to be displayed by the Fishbowl/IPython frontend."))
 ;;;;;;;;;;;;
 ;;; BOOT ;;;
 ;;;;;;;;;;;;
-
 ;(in-package #:boot)
-;(import 'cl-jupyter-user:html)
-;(import 'cl-jupyter-user:markdown)
+
 
 
         

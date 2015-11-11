@@ -47,10 +47,10 @@ jupyter() : Exports == Implementation where
 
   Implementation ==  add
 
-    htmlFile:String := "/tmp/jhtml.html"
-    mdFile:String   := "/tmp/jmd.md"
-    texFile:String  := "/tmp/jtex.tex"
-    jsFile:String   := "/tmp/jjs.js"
+    htmlFile:String := ".jhtml.html"
+    mdFile:String   := ".jmd.md"
+    texFile:String  := ".jtex.tex"
+    jsFile:String   := ".jjs.js"
 
     jFormat(s:String,f:String):FileName == 
       f1:TextFile:=open(f::FileName,"output")
@@ -65,8 +65,8 @@ jupyter() : Exports == Implementation where
 
     -- jDraw
 
-    outFile:String := "/tmp/gd.dat"
-    pngFile:String := "/tmp/gd.png"
+    outFile:String := ".jpgd.dat"
+    pngFile:String := ".jpgd.png"
     gplOpts:String := "'set terminal png'"
     sysGplt:String := "system gnuplot -e"
     sysPcmd:String := concat [sysGplt," ",gplOpts," ",outFile," > ",pngFile]
