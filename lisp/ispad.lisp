@@ -153,7 +153,7 @@
 ;;;   - New (boolean) parameter *cl-guard*. To execute Aldor code set
 ;;;     )lisp (setq cl-jupyter::*cl-guard* nil)
 ;;;   - In section "Evaluator", function "evaluate-code": )co, )lib and
-;;;     *cl-guard*=nil are evaluated without "handling-errors". 
+;;;     +ISPAD-GUARD+=nil are evaluated without "handling-errors". 
 ;;;   - Allow several ")..." commands in one cell 
 ;;;     (cond starts-with-p: disabled in pre-process)
 ;;;     Starting with "$" still reserved!
@@ -168,9 +168,28 @@
 ;;;   -- tidy up of render/display, temp reverted "handling-errors" macro.
 ;;;
 ;;;   Version 0.9.6
-;;;   - Section Shell: new string parameter *tmp-ispad* to resolve SMC
+;;;   - Section Shell: new string parameter +ISPAD-TMP+ to resolve SMC
 ;;;     problem of different process rights.
 ;;;
+;;;   Version 0.9.7
+;;;   - Section Evaluator: new handling-errors macro in use now: 
+;;;     cl-jupyter/3a2e8f7/71200db (serious-conditions only).   
+;;;   - Code cleaning (max width 80).
+;;;   - Section Config: new-> defparameter +HTML-PREFIX+ "$HTML$"
+;;;     A string of the form "$HTML$abc..." will be rendered as HTML.
+;;;   - Parameters collected in CONFIG section. The following have been
+;;;     renamed:
+;;;                *cl-guard*     -> new -> +ISPAD-GUARD+
+;;;                *tmp-ispad*    -> new -> +ISPAD-TMP+
+;;;                *pretex*       -> new -> +TEX-PREFIX+
+;;;                *type-format*  -> new -> +TEX-TYPE-FORMAT+
+;;;
+;;;     This was done in order to avoid any ambiguities.
+;;;   - Native plotting (CL) is hardly feasible: no libs, see CLiki, 
+;;;     and injecting JS libraries is no option at all.
+;;;     Since Gnuplot has improved (mousable html5 canvas, svg) one should
+;;;     consider to extend GnuDraw.
+;;;     
 ;;;
 ;;;   Version 1.0
 ;;;   soon ;-)
@@ -207,7 +226,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; removed
-;; see "quick.lisp"
+;; see file "quick.lisp"
 
 
 ;;;;;;;;;;;;;;;;
@@ -267,15 +286,33 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    #:svg-from-file
    #:quit))
 
-(in-package #:cl-jupyter)
 
 ;;;;;;;;;;;;;;
 ;;; Config ;;;
 ;;;;;;;;;;;;;;
+
+(in-package #:cl-jupyter)
+
 (defparameter +KERNEL-IMPLEMENTATION-NAME+ "cl-jupyter")
 (defparameter +KERNEL-IMPLEMENTATION-VERSION+ "0.7")
 (defparameter +KERNEL-PROTOCOL-VERSION+ "5.0")
-(defparameter +ISPAD-VERSION+ "0.9.6 :: 08-NOV-2015")
+(defparameter +ISPAD-VERSION+ "0.9.7 :: 06-DEC-2015")
+(defparameter +HTML-PREFIX+ "$HTML$")
+(defparameter +ISPAD-TMP+ (format nil ".tmp-ispad-~S.input" (random 100000)))
+(defparameter +ISPAD-GUARD+ t)  
+(defparameter +TEX-PREFIX+ (concatenate 'string  
+    "\\("        
+    "\\def\\sp{^}\\def\\sb{_}\\def\\leqno(#1){}"
+    "\\def\\erf{\\mathrm{erf}}\\def\\sinh{\\mathrm{sinh}}"
+    "\\def\\zag#1#2{{{\\left.{#1}\\right|}\\over{\\left|{#2}\\right.}}}"
+    "\\def\\csch{\\mathrm{csch}}"
+    "\\require{color}"
+    "\\)"
+))
+
+(defparameter +TEX-TYPE-FORMAT+ 
+   "\\(\\\\[3ex]\\color{blue}\\scriptsize\\text{~A}\\)")
+
 
 
 
@@ -299,16 +336,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (defmacro vbinds (binders expr &body body)
   "An abbreviation for MULTIPLE-VALUE-BIND."
-  (labels ((replace-underscores (bs &optional (result nil) (fresh-vars nil) (replaced nil))
-             (if (null bs)
-                 (let ((nresult (nreverse result))
-                       (nfresh (nreverse fresh-vars)))
-                   (values replaced nresult nfresh))
-                 (if (equal (symbol-name (car bs)) "_")
-                     (let ((fresh-var (gensym "underscore-")))
-                       (replace-underscores (cdr bs) (cons fresh-var result) (cons fresh-var fresh-vars) t))
-                     (replace-underscores (cdr bs) (cons (car bs) result) fresh-vars replaced)))))
-    (multiple-value-bind (has-underscore nbinders fresh-vars) (replace-underscores binders)
+  (labels ((replace-underscores (bs &optional (result nil) (fresh-vars nil) 
+    (replaced nil))
+       (if (null bs)
+          (let ((nresult (nreverse result))
+             (nfresh (nreverse fresh-vars)))
+                (values replaced nresult nfresh))
+                (if (equal (symbol-name (car bs)) "_")
+                   (let ((fresh-var (gensym "underscore-")))
+                     (replace-underscores (cdr bs) (cons fresh-var result) 
+                         (cons fresh-var fresh-vars) t))
+                     (replace-underscores (cdr bs) (cons (car bs) result) 
+                         fresh-vars replaced)))))
+    (multiple-value-bind (has-underscore nbinders fresh-vars) 
+        (replace-underscores binders)
       (if has-underscore
           `(multiple-value-bind ,nbinders ,expr
              (declare (ignore ,@fresh-vars))
@@ -342,23 +383,25 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 (defun read-binary-file (filename)
   (with-open-file (stream filename :element-type '(unsigned-byte 8))
-    (let ((bytes (make-array (file-length stream) :element-type '(unsigned-byte 8))))
-      (read-sequence bytes stream)
-      bytes)))
+    (let ((bytes (make-array (file-length stream) 
+      :element-type '(unsigned-byte 8))))
+       (read-sequence bytes stream)
+         bytes)))
 
 
 (defun read-string-file (filename)
   (with-open-file (stream filename)
-    (let ((str (make-array (file-length stream) :element-type 'character :fill-pointer t)))
-      (setf (fill-pointer str) (read-sequence str stream))
-      str)))
+    (let ((str (make-array (file-length stream) 
+      :element-type 'character :fill-pointer t)))
+       (setf (fill-pointer str) (read-sequence str stream))
+         str)))
+
 
 ;;;;;;;;;;;;;;
 ;;; MyJson ;;;
 ;;;;;;;;;;;;;;
 
 (in-package #:myjson)
-
 
 ;; Mapping types 
 ;; - JSon objects map to Lisp a-lists with string keys
@@ -376,19 +419,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	     (format stream "[JSon parse error] ~A"
 		     (match-error-message condition)))))
 
+
 (defun char-whitespace-p (char)
   (or (char= char #\Space)
       (char= char #\Tab)
       (char= char #\Return)
       (char= char #\Linefeed)))
 
+
 (defun read-next-char (input)
   (loop 
-     (let ((char (read-char input nil :eof)))
-       (cond ((eql char :eof) (error 'json-parse-error :message "Unexpected end of file"))
-	     ((char= char #\\) ; c-style escape chars
+    (let ((char (read-char input nil :eof)))
+      (cond ((eql char :eof) 
+        (error 'json-parse-error :message "Unexpected end of file"))
+	      ((char= char #\\) ; c-style escape chars
 	      (let ((char (read-char input nil :eof)))
-		(cond ((eql char :eof) (error 'json-parse-error :message "Unexpected end of file (after '\'"))
+	  (cond ((eql char :eof) 
+		(error 'json-parse-error :message "Unexpected end of file (after '\'"))
 		      ((char= char #\n) (return #\Newline))
 		      (t (return char)))))
 	     ((not (char-whitespace-p char)) (return char))))))
@@ -397,9 +444,10 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (defun peek-next-char (input)
   (loop 
      (let ((char (peek-char nil input nil :eof)))
-       (cond ((eql char :eof) (error 'json-parse-error :message "Unexpected end of file"))
-	     ((char-whitespace-p char) (read-char input))
-	     (t (return char))))))
+       (cond ((eql char :eof) 
+         (error 'json-parse-error :message "Unexpected end of file"))
+	       ((char-whitespace-p char) (read-char input))
+	         (t (return char))))))
 
 
 (defun parse-json (input)
@@ -414,41 +462,55 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	  ((char= char #\t) (parse-json-literal-true input))
 	  ((char= char #\f) (parse-json-literal-false input))
 	  ((char= char #\n) (parse-json-literal-null input))
-	  (t (error 'json-parse-error :message (format nil "Unexpected character: ~A" char))))))
+	  (t (error 'json-parse-error 
+	     :message (format nil "Unexpected character: ~A" char))))))
 
+	     
 (defun parse-json-literal (input first literal)
   (loop 
      for expect across literal
      do (let ((char (read-char input nil :eof)))
-	  (cond ((eql char :eof)  (error 'json-parse-error :message (format nil "Unexpected end of file while parsing literal: ~A~A" first literal)))
-		((not (char= char expect)) (error 'json-parse-error :message (format nil "While parsing literal, expecting '~A' instead of: ~A (literal ~A~A)" expect char first literal))))))
-  t)
+	  (cond ((eql char :eof)  
+	    (error 'json-parse-error :message (format nil 
+	     "Unexpected end of file while parsing literal: ~A~A" first literal)))
+		((not (char= char expect)) 
+		   (error 'json-parse-error :message 
+		     (format nil 
+		       "While parsing literal, expecting '~A' instead of: ~A 
+		          (literal ~A~A)" expect char first literal)))))) t)
 
+		          
 (defun parse-json-literal-true (input)
   (when (parse-json-literal input #\t "rue")
     :true))
 
+ 
 (defun parse-json-literal-false (input)
   (when (parse-json-literal input #\f "alse")
     :false))
 
+    
 (defun parse-json-literal-null (input)
   (when (parse-json-literal input #\n "ull")
     :null))
 
+    
 (defun parse-json-string (input)
-  (let ((str (make-array 32 :fill-pointer 0 :adjustable t :element-type 'character)))
+  (let ((str (make-array 32 :fill-pointer 0 :adjustable t 
+   :element-type 'character)))
     (loop
        (let ((char (read-char input nil :eof)))
 	 ;(format t "char = ~A~%" char)
-	 (cond ((eql char :eof) (error 'json-parse-error :message "Unexpected end of file"))
+	 (cond ((eql char :eof) 
+	    (error 'json-parse-error :message "Unexpected end of file"))
 	       ((char= char #\\)
 		(let ((escape-char (read-char input nil :eof)))
 		  ;(format t "escape char = ~A~%" escape-char)
-		  (cond ((eql escape-char :eof) (error 'json-parse-error :message "Unexpected end of file (after '\')"))
+		  (cond ((eql escape-char :eof) 
+		    (error 'json-parse-error 
+		      :message "Unexpected end of file (after '\')"))
 			((char= escape-char #\n) (vector-push-extend #\Newline str))
 			(t 
-			 ;;(vector-push-extend char str) ;; XXX: escaping is performed on the lisp side
 			 (vector-push-extend escape-char str)))))
 	       ((char= char #\") (return str))
 	       (t (vector-push-extend char str)))))))
@@ -458,20 +520,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   (let ((obj (list)))
     (loop
        (let ((ckey (read-next-char input)))
-	 (cond ((char= ckey #\}) (return (nreverse obj))) ;; special case : empty object 
+	 (cond ((char= ckey #\}) (return (nreverse obj))) 
 	       ((not (char= ckey #\"))
-		(error 'json-parse-error :message (format nil "Expecting \" for object key, found: ~A" ckey))))
+		(error 'json-parse-error :message 
+		  (format nil "Expecting \" for object key, found: ~A" ckey))))
 	 (let ((key (parse-json-string input)))
 	   (let ((sep (read-next-char input)))
 	     (when (not (char= sep #\:))
-	       (error 'json-parse-error :message "Missing key/value separator ':' in object"))
+	       (error 'json-parse-error 
+	         :message "Missing key/value separator ':' in object"))
 	     (let ((val (parse-json input)))
 	       (setf obj (cons (cons key val) obj))
 	       (let ((term (read-next-char input)))
 		 (cond ((char= term #\,) t) ; continue
 		       ((char= term #\}) (return (nreverse obj))) ; in-place is ok
-		       (t (error 'json-parse-error :message (format nil "Unexpected character in object: ~A" term))))))))))))
+		       (t (error 'json-parse-error :message 
+		 (format nil "Unexpected character in object: ~A" term))))))))))))
 
+		 
 (defun parse-json-array (input)
   (let ((array (make-array 32 :fill-pointer 0 :adjustable t)))
     (loop
@@ -485,19 +551,23 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	       (let ((term (read-next-char input)))
 		 (cond ((char= term #\]) (return array))
 		       ((char= term #\,) t)  ; continue
-		       (t (error 'json-parse-error :message (format nil "Unexpected array separator/terminator: ~A" term)))))))))))
+		       (t (error 'json-parse-error :message 
+	  (format nil "Unexpected array separator/terminator: ~A" term)))))))))))
 
 
 (defun parse-json-digit (input &key (min #\0) (max #\9))
   (let ((char (read-next-char input)))
     (if (or (char< char min)
 	    (char> char max))
-	(error 'json-parse-error :message (format nil "Expecting digit between in range [~A..~A], found: ~A" min max char))
+	(error 'json-parse-error :message 
+	  (format nil "Expecting digit between in range [~A..~A], 
+	    found: ~A" min max char))
 	char)))
 
 
 (defun parse-json-digits (input &key (min #\0) (max #\9))
-  (let ((digits (make-array 8 :fill-pointer 0 :adjustable t :element-type 'character)))
+  (let ((digits (make-array 8 :fill-pointer 0 :adjustable t 
+      :element-type 'character)))
     (loop
        (let ((char (peek-char nil input nil :eof)))
 	 (cond ((eql char :eof) (return digits))
@@ -523,12 +593,14 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 	  (setf sep (peek-char nil input nil :eof))))
       (when (or (eql sep #\e) (eql sep #\E))
 	(read-char input)
-	(let ((exppart (parse-json-number-exponent-part (format nil "~A" sep) input)))
+	(let ((exppart (parse-json-number-exponent-part 
+	  (format nil "~A" sep) input)))
 	  ;; (format t "Exponent = ~A ~%" exppart)
 	  (setf number (concatenate 'string number exppart)))))
       ;; return the resulting number
       (read-from-string number)))
-	      
+	  
+
 (defun parse-json-number-fractional-part (init input)
   (cond ((char= init #\0) "")
 	((and (char>= init #\1)
@@ -542,15 +614,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (defun parse-json-number-decimal-part (input)
   (concatenate 'string "." (parse-json-digits input)))
 
+
 (defun parse-json-number-exponent-part (exp input)
   (let ((exponent exp))
     (let ((char (peek-char nil input nil :eof)))
-      (cond ((eql char #\+) (read-char input) (setf exponent (concatenate 'string exponent "+")))
-	    ((eql char #\-) (read-char input) (setf exponent (concatenate 'string exponent "-")))
+      (cond ((eql char #\+) (read-char input) 
+         (setf exponent (concatenate 'string exponent "+")))
+	    ((eql char #\-) (read-char input) (setf exponent 
+	      (concatenate 'string exponent "-")))
 	    ((and (characterp char)
 		  (char>= char #\0) 
-		  (char<= char #\9)) (read-char input) (setf exponent (concatenate 'string exponent (format nil "~A" char))))
-	    (t (error 'json-parse-error :message (format nil "Missing exponent digit(s) or sign, found: ~A" char)))))
+		  (char<= char #\9)) (read-char input) 
+		  (setf exponent (concatenate 'string exponent (format nil "~A" char))))
+	    (t (error 'json-parse-error :message 
+	       (format nil "Missing exponent digit(s) or sign, found: ~A" char)))))
     (concatenate 'string exponent (parse-json-digits input))))
 
 
@@ -564,10 +641,12 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   "Indentation level (number of space(s) per indent) for the
  JSon encoder (default is 2).")
 
+
 (defgeneric encode-json (stream thing &key indent)
   (:documentation "Encode on STREAM a JSon representation of THING. 
 The INDENT can be given for beautiful/debugging output (default is NIL
  for deactivating the indentation)."))
+
 
 (defun encode-json-to-string (thing &key indent)
   "Encode as a string a JSon representation of THING. 
@@ -576,14 +655,16 @@ The INDENT can be given for beautiful/debugging output (default is NIL
   (with-output-to-string (stream)
     (encode-json stream thing :indent indent)))
 
+
 (defun gen-indent (level)
   (if level
-      (make-string (* level *json-encoder-indent-level*) :initial-element #\Space)
-      ""))
+      (make-string (* level *json-encoder-indent-level*) 
+        :initial-element #\Space) ""))
 
 
 (defun string-to-json-string (str)
-  (let ((jstr (make-array (length str) :fill-pointer 0 :adjustable t :element-type 'character)))               
+  (let ((jstr (make-array (length str) :fill-pointer 0 :adjustable t 
+     :element-type 'character)))               
     (loop
        for char across str
        do (cond ((char= char #\Newline)
@@ -608,14 +689,18 @@ The INDENT can be given for beautiful/debugging output (default is NIL
        for (key . val) in thing
        for sep = "" then sepstr
        do (progn (json-write stream nil nil sep)
-		 (json-write stream (if indent (1+ indent) nil) nil (format nil "~W: " key))
-		 (encode-json stream val :indent (if indent (+ 2 indent) nil) :first-line t))))
+		 (json-write stream (if indent (1+ indent) nil) nil 
+		   (format nil "~W: " key))
+		 (encode-json stream val :indent (if indent (+ 2 indent) nil) 
+		   :first-line t))))
   (when (and thing indent)
     (format stream "~%"))
   (json-write stream indent nil "}"))
 
+
 (defmethod encode-json (stream (thing null) &key (indent nil) (first-line nil))
   (json-write stream (if first-line nil indent) (if indent t nil) "{}"))
+
 
 (defmethod encode-json (stream (thing array) &key (indent nil) (first-line nil))
   (json-write stream (if first-line nil indent) (if indent t nil) "[")
@@ -624,59 +709,69 @@ The INDENT can be given for beautiful/debugging output (default is NIL
        for val across thing
        for sep = "" then sepstr
        do (progn (json-write stream nil nil sep)
-		 (encode-json stream val :indent (if indent (+ 1 indent) nil) :first-line t))))
+		 (encode-json stream val :indent (if indent (+ 1 indent) nil) 
+		   :first-line t))))
   (when (and thing indent)
     (format stream "~%"))
   (json-write stream indent nil "]"))
 
-(defmethod encode-json (stream (thing string) &key (indent nil) (first-line nil))
-  (json-write stream (if first-line nil indent) nil (string-to-json-string (with-output-to-string (str) (prin1 thing str)))))
+
+(defmethod encode-json (stream (thing string) &key (indent nil) 
+   (first-line nil))
+  (json-write stream (if first-line nil indent) nil 
+     (string-to-json-string (with-output-to-string (str) (prin1 thing str)))))
 
 
-(defmethod encode-json (stream (thing integer) &key (indent nil) (first-line nil))
-  (json-write stream (if first-line nil indent) nil (format nil "~A" thing)))
+(defmethod encode-json (stream (thing integer) &key (indent nil) 
+  (first-line nil))
+   (json-write stream (if first-line nil indent) nil (format nil "~A" thing)))
 
 
 (defmethod encode-json (stream (thing float) &key (indent nil) (first-line nil))
   (json-write stream (if first-line nil indent) nil (format nil "~A" thing)))
 
 
-(defmethod encode-json (stream (thing (eql :true)) &key (indent nil) (first-line nil))
-  (json-write stream (if first-line nil indent) nil "true"))
+(defmethod encode-json (stream (thing (eql :true)) &key (indent nil) 
+  (first-line nil))
+   (json-write stream (if first-line nil indent) nil "true"))
 
 
-(defmethod encode-json (stream (thing (eql :false)) &key (indent nil) (first-line nil))
-  (json-write stream (if first-line nil indent) nil "false"))
+(defmethod encode-json (stream (thing (eql :false)) &key (indent nil) 
+  (first-line nil))
+    (json-write stream (if first-line nil indent) nil "false"))
 
 
-(defmethod encode-json (stream (thing (eql :null)) &key (indent nil) (first-line nil))
-  (json-write stream (if first-line nil indent) nil "null"))
+(defmethod encode-json (stream (thing (eql :null)) &key (indent nil) 
+  (first-line nil))
+    (json-write stream (if first-line nil indent) nil "null"))
+
 
 ;;;;;;;;;;;;;;;;
 ;;; Messages ;;;
 ;;;;;;;;;;;;;;;;
 
-
 (in-package #:cl-jupyter)
+
 
 (defclass header ()
   ((msg-id :initarg :msg-id :reader header-msg-id :type string)
    (username :initarg :username :reader header-username :type string)
    (session :initarg :session :reader header-session :type string)
    (msg-type :initarg :msg-type :reader header-msg-type :type string)
-   (version :initarg :version :initform +KERNEL-PROTOCOL-VERSION+ :reader header-version :type string))
+   (version :initarg :version :initform +KERNEL-PROTOCOL-VERSION+ 
+            :reader header-version :type string))
   (:documentation "Header representation for IPython messages"))
 
 
-(defmethod encode-json (stream (object header) &key (indent nil) (first-line nil))
-  (with-slots (msg-id username session msg-type version) object
-    (encode-json stream `(("msg_id" . ,msg-id)
-                          ("username" . ,username)
-                          ("session" . ,session)
-                          ("msg_type" . ,msg-type)
-                          ("version" . ,version))
-                 :indent indent :first-line first-line)))
-
+(defmethod encode-json (stream (object header) &key (indent nil) 
+  (first-line nil))
+    (with-slots (msg-id username session msg-type version) object
+      (encode-json stream `(("msg_id" . ,msg-id)
+                            ("username" . ,username)
+                            ("session" . ,session)
+                            ("msg_type" . ,msg-type)
+                            ("version" . ,version))
+                   :indent indent :first-line first-line)))
 
 
 (defun wire-deserialize-header (hdr)
@@ -692,10 +787,12 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 
 (defclass message ()
   ((header :initarg :header :accessor message-header)
-   (parent-header :initarg :parent-header :initform nil :accessor message-parent-header)
+   (parent-header :initarg :parent-header :initform nil 
+     :accessor message-parent-header)
    (metadata :initarg :metadata :initform nil :accessor message-metadata)
    (content :initarg :content :initform nil :accessor message-content))
   (:documentation "Representation of IPython messages"))
+
 
 (defun make-message (parent_msg msg_type metadata content) 
   (let ((hdr (message-header parent_msg)))
@@ -711,6 +808,7 @@ The INDENT can be given for beautiful/debugging output (default is NIL
      :parent-header hdr
      :metadata metadata
      :content content)))
+
 
 (defun make-orphan-message (session-id msg-type metadata content) 
   (make-instance 
@@ -728,7 +826,9 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 
 
 (defun octets-to-hex-string (bytes)
-  (apply #'concatenate (cons 'string (map 'list (lambda (x) (format nil "~(~2,'0X~)" x)) bytes))))
+  (apply #'concatenate (cons 'string (map 'list 
+      (lambda (x) (format nil "~(~2,'0X~)" x)) bytes))))
+
 
 (defun message-signing (key parts)
   (let ((hmac (ironclad:make-hmac key :SHA256)))
@@ -743,6 +843,7 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 ;; XXX: should be a defconstant but  strings are not EQL-able...
 (defvar +WIRE-IDS-MSG-DELIMITER+ "<IDS|MSG>")
 
+
 (defmethod wire-serialize ((msg message) &key (identities nil)(key nil))
   (with-slots (header parent-header metadata content) msg
     (let ((header-json (encode-json-to-string header))
@@ -755,9 +856,8 @@ The INDENT can be given for beautiful/debugging output (default is NIL
           (content-json (if content
                             (encode-json-to-string content)
                             "{}")))
-      (let ((sig (if key
-                     (message-signing key (list header-json parent-header-json metadata-json content-json))
-                     "")))
+      (let ((sig (if key  (message-signing key 
+        (list header-json parent-header-json metadata-json content-json)) "")))
         (append identities
                 (list +WIRE-IDS-MSG-DELIMITER+
                       sig
@@ -776,14 +876,15 @@ The INDENT can be given for beautiful/debugging output (default is NIL
       (let ((msg (destructuring-bind (header parent-header metadata content)
                      (subseq parts (+ 2 delim-index) (+ 6 delim-index))
                    (make-instance 'message
-                                  :header (wire-deserialize-header header)
-                                  :parent-header (wire-deserialize-header parent-header)
-                                  :metadata metadata
-                                  :content content))))
+                          :header (wire-deserialize-header header)
+                          :parent-header (wire-deserialize-header parent-header)
+                          :metadata metadata
+                          :content content))))
         (values identities
                 signature
                 msg
                 (subseq parts (+ 6 delim-index)))))))
+
 
 (defun message-send (socket msg &key (identities nil)(key nil))
   (let ((wire-parts (wire-serialize msg :identities identities :key key)))
@@ -794,19 +895,21 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 
 
 ;;; update:88f28d1 
-
-(defun recv-string (socket &key dontwait (encoding cffi:*default-foreign-encoding*))
+(defun recv-string (socket &key dontwait 
+   (encoding cffi:*default-foreign-encoding*))
   "Receive a message part from a socket as a string."
   (pzmq:with-message msg
     (pzmq:msg-recv msg socket :dontwait dontwait)
     (values
      (handler-case 
-         (cffi:foreign-string-to-lisp (pzmq:msg-data msg) :count (pzmq:msg-size msg) :encoding encoding)
+         (cffi:foreign-string-to-lisp (pzmq:msg-data msg) 
+              :count (pzmq:msg-size msg) :encoding encoding)
        (BABEL-ENCODINGS:INVALID-UTF8-STARTER-BYTE
            ()
          ;; if it's not utf-8 we try latin-1 (Ugly !)
          (format t "[Recv]: issue with UTF-8 decoding~%")
-         (cffi:foreign-string-to-lisp (pzmq:msg-data msg) :count (pzmq:msg-size msg) :encoding :latin-1)))
+         (cffi:foreign-string-to-lisp (pzmq:msg-data msg) 
+           :count (pzmq:msg-size msg) :encoding :latin-1)))
      (pzmq:getsockopt socket :rcvmore))))
 
 
@@ -814,25 +917,21 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 (defun zmq-recv-list (socket &optional (parts nil) (part-num 1))
   (multiple-value-bind (part more)
       (recv-string socket)
-    ;;(format t "[Shell]: received message part #~A: ~W (more? ~A)~%" part-num part more)
     (if more
         (zmq-recv-list socket (cons part parts) (+ part-num 1))
         (reverse (cons part parts)))))
 
 
-
 (defun message-recv (socket)
   (let ((parts (zmq-recv-list socket)))
-    ;;(format t "[Recv]: parts: ~A~%" (mapcar (lambda (part) (format nil "~W" part)) parts))
     (wire-deserialize parts)))
+
 
 ;;;;;;;;;;;;;
 ;;; Shell ;;;
 ;;;;;;;;;;;;;
 
 (in-package #:cl-jupyter)
-
-(defparameter *tmp-ispad* (format nil ".tmp-ispad-~S.input" (random 100000)))
 
 
 (defclass shell-channel ()
@@ -854,31 +953,27 @@ The INDENT can be given for beautiful/debugging output (default is NIL
           (pzmq:bind socket endpoint)
           shell)))))
 
+
 (defun shell-loop (shell)
   (let ((active t))
     (format t "[Shell] loop started~%")
-    (send-status-starting (kernel-iopub (shell-kernel shell)) (kernel-session (shell-kernel shell)) :key (kernel-key shell))
+    (send-status-starting (kernel-iopub (shell-kernel shell)) 
+      (kernel-session (shell-kernel shell)) :key (kernel-key shell))
     (while active
       (vbinds (identities sig msg buffers)  (message-recv (shell-socket shell))
-	      ;;(format t "Shell Received:~%")
-	      ;;(format t "  | identities: ~A~%" identities)
-	      ;;(format t "  | signature: ~W~%" sig)
-	      ;;(format t "  | message: ~A~%" (encode-json-to-string (message-header msg)))
-	      ;;(format t "  | buffers: ~W~%" buffers)
-
-	      ;; TODO: check the signature (after that, sig can be forgotten)
-	      (let ((msg-type (header-msg-type (message-header msg))))
+	    (let ((msg-type (header-msg-type (message-header msg))))
 		(cond ((equal msg-type "kernel_info_request")
-		       (handle-kernel-info-request shell identities msg buffers))
+		  (handle-kernel-info-request shell identities msg buffers))
 		      ((equal msg-type "execute_request")  ;;; pre-proc here?
-		       (setf active (handle-execute-request shell identities msg buffers)))
+		  (setf active (handle-execute-request shell identities msg buffers)))
               ((equal msg-type "complete_request") ;;;+NEW
-               (handle-complete-request shell identities msg buffers))
+          (handle-complete-request shell identities msg buffers))
               ((equal msg-type "inspect_request") ;;;+NEW
-               (handle-inspect-request shell identities msg buffers))
+          (handle-inspect-request shell identities msg buffers))
               ((equal msg-type "comm_open") ;;;+NEW
                nil)                     
-		      (t (warn "[Shell] message type '~A' not (yet ?) supported, skipping..." msg-type))))))))
+     (t (warn "[Shell] message type '~A' not (yet ?) supported, skipping..." 
+        msg-type))))))))
 
 
 ;; for protocol version 5  
@@ -889,42 +984,47 @@ The INDENT can be given for beautiful/debugging output (default is NIL
    (language-info-name :initarg :language-info-name :type string)
    (language-info-version :initarg :language-info-version :type string)
    (language-info-mimetype :initarg :language-info-mimetype :type string)
-   (language-info-pygments-lexer :initarg :language-info-pygments-lexer :type string)
-   (language-info-codemirror-mode :initarg :language-info-codemirror-mode :type string)
-   (language-info-nbconvert-exporter :initarg :language-info-nbconvert-exporter :type string)
+   (language-info-pygments-lexer :initarg :language-info-pygments-lexer 
+     :type string)
+   (language-info-codemirror-mode :initarg :language-info-codemirror-mode 
+     :type string)
+   (language-info-nbconvert-exporter :initarg :language-info-nbconvert-exporter
+     :type string)
    (banner :initarg :banner :type string)
    ;; help links: (text . url) a-list
    (help-links :initarg :help-links)))
 
 
 (defun help-links-to-json (help-links)
-  (concatenate 'string "["
-	       (concat-all 'string ""
-			   (join "," (mapcar (lambda (link) 
-					       (format nil "{ \"text\": ~W, \"url\": ~W }" (car link) (cdr link))) 
-					     help-links)))
-	       "]"))
+  (concatenate 'string "[" (concat-all 'string "" 
+    (join "," (mapcar (lambda (link) 
+	   (format nil "{ \"text\": ~W, \"url\": ~W }" (car link) (cdr link))) 
+		 help-links))) "]"))
+
 
 ;; for protocol version 5
-(defmethod encode-json (stream (object content-kernel-info-reply) &key (indent nil) (first-line nil))
+(defmethod encode-json (stream (object content-kernel-info-reply) &key 
+  (indent nil) (first-line nil))
   (with-slots (protocol-version
-               implementation implementation-version
-               language-info-name language-info-version
-               language-info-mimetype language-info-pygments-lexer language-info-codemirror-mode
-               language-info-nbconvert-exporter
-               banner help-links) object
-    (encode-json stream `(("protocol_version" . ,protocol-version)
-                          ("implementation" . ,implementation)
-                          ("implementation_version" . ,implementation-version)
-                          ("language_info" . (("name" . ,language-info-name)
-                                              ("version" . ,language-info-version)
-                                              ("mimetype" . ,language-info-mimetype)
-                                              ("pygments_lexer" . ,language-info-pygments-lexer)
-                                              ("codemirror_mode" . ,language-info-codemirror-mode)))
-                                              ;("nbconvert_exporter" . ,language-info-nbconvert-exporter)))
-                          ("banner" . "iSPAD") 
-                          ("help_links" . ,help-links))
-                 :indent indent :first-line first-line)))
+      implementation implementation-version
+      language-info-name language-info-version
+      language-info-mimetype language-info-pygments-lexer 
+      language-info-codemirror-mode
+      language-info-nbconvert-exporter
+      banner help-links) object
+    (encode-json stream 
+        `(("protocol_version" . ,protocol-version)
+          ("implementation" . ,implementation)
+          ("implementation_version" . ,implementation-version)
+          ("language_info" . (("name" . ,language-info-name)
+          ("version" . ,language-info-version)
+          ("mimetype" . ,language-info-mimetype)
+          ("pygments_lexer" . ,language-info-pygments-lexer)
+          ("codemirror_mode" . ,language-info-codemirror-mode)))
+         ;("nbconvert_exporter" . ,language-info-nbconvert-exporter)))
+          ("banner" . "iSPAD") 
+          ("help_links" . ,help-links))
+       :indent indent :first-line first-line)))
 
 
 (defun kernel-key (shell)
@@ -935,7 +1035,8 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 (defun handle-kernel-info-request (shell identities msg buffers)
   ;;(format t "[Shell] handling 'kernel-info-request'~%")
   ;; status to busy
-  (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" :key (kernel-key shell))
+  (send-status-update (kernel-iopub (shell-kernel shell)) 
+     msg "busy" :key (kernel-key shell))
   ;; for protocol version 5
   (let ((reply (make-message
                 msg "kernel_info_reply" nil
@@ -953,15 +1054,16 @@ The INDENT can be given for beautiful/debugging output (default is NIL
                  :banner "iSPAD"
                  :help-links (vector)))))
 
-    (message-send (shell-socket shell) reply :identities identities :key (kernel-key shell))
+    (message-send (shell-socket shell) reply :identities identities 
+      :key (kernel-key shell))
     ;; status back to idle
-    (send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" :key (kernel-key shell))))
+    (send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" 
+       :key (kernel-key shell))))
 
-
-;;;+NEW
 
 ;;; catch a stream after command 'cmd' execution:
 ;;; example:  (setq res (catch-stream "y^2+1" *standard-output*))
+
 (defmacro catch-stream (cmd my-stream)
     `(let ((tmpout (make-string-output-stream))
           (save ,my-stream))
@@ -970,6 +1072,7 @@ The INDENT can be given for beautiful/debugging output (default is NIL
        (let ((result (get-output-stream-string ,my-stream)))
          (setq ,my-stream save)
            result)))
+
 
 ;;; catch a stream after a sys command exec, e.g. ")d op sin"
 ;;; example:  (setq res (catch-stream ")d op sin" *standard-output*))
@@ -991,6 +1094,7 @@ The INDENT can be given for beautiful/debugging output (default is NIL
      (if pos 
         (list (subseq s (+ pos 1)) (+ pos 1)) 
         (list s pos))))
+
 
 (defun get-token2 (code pos)
     "Get token @ pos-1, e.g. sin() -> sin, sin(cos( -> cos"
@@ -1014,6 +1118,7 @@ The INDENT can be given for beautiful/debugging output (default is NIL
     "Given a sentence returns a vector of completion candidates"
     (coerce (get-match-list (car (get-token s)) ax-tokens) 'vector))
 
+
 ;; must be in package :boot !
 ;; if token too short => yes/no question => hangs !!! 
 ;; return value: '("text of ')d op token' operation")
@@ -1026,10 +1131,10 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 		     *standard-output*)) 
 		(list (format nil "[~A] not found." token)))))
 
-;---
 
 (defun handle-complete-request (shell identities msg buffers)
-  (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" :key (kernel-key shell))
+  (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" 
+     :key (kernel-key shell))
   (let ((content (parse-json-from-string (message-content msg))))
      (let ((code (afetch "code" content :test #'equal))
            (cursor-end (afetch "cursor_pos" content :test #'equal)))
@@ -1041,13 +1146,15 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 		       ("cursor_end" . ,(write-to-string cursor-end)) ;; = by def
      		   ("metadata" . nil)
 	           ("status" . "ok")))))
-        (send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" :key (kernel-key shell))
-        (message-send (shell-socket shell) reply :identities identities :key (kernel-key shell)) t)))))       
-
+        (send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" 
+           :key (kernel-key shell))
+        (message-send (shell-socket shell) reply :identities identities 
+           :key (kernel-key shell)) t)))))       
 
 
 (defun handle-inspect-request (shell identities msg buffers)
-    (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" :key (kernel-key shell))
+    (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" 
+        :key (kernel-key shell))
     (let ((content (parse-json-from-string (message-content msg))))
       (let ((code (afetch "code" content :test #'equal))
            (cursor-end (afetch "cursor_pos" content :test #'equal)))
@@ -1058,23 +1165,26 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 		                     (get-inspect-list code cursor-end)))  
      		   ("metadata" . nil)
 	           ("status" . "ok")))))
-        (send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" :key (kernel-key shell))
-        (message-send (shell-socket shell) reply :identities identities :key (kernel-key shell)) t))))
+        (send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" 
+            :key (kernel-key shell))
+        (message-send (shell-socket shell) reply :identities identities 
+            :key (kernel-key shell)) t))))
 
 
 (defun code-to-eval (code)
     (let ((nl (count #\newline code)))
       (if (> nl 0) 
         (when t (with-open-file 
-          (stream *tmp-ispad* :direction :output :if-exists :supersede)
+          (stream +ISPAD-TMP+ :direction :output :if-exists :supersede)
           (format stream code))
-           (format nil ")read ~S )quiet )ifthere" *tmp-ispad*))  
+           (format nil ")read ~S )quiet )ifthere" +ISPAD-TMP+))  
          code)))
 
+
 ;;; work-around: 0.9.4
-(defparameter *cl-guard* t)  
+;;; move to config (defparameter +ISPAD-GUARD+ t)  
 ;;; in evaluate-code (guard on/off) 
-;;;    
+    
  
 (defun pre-process (code)
     (cond 
@@ -1085,7 +1195,8 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 
 
 (defun handle-execute-request (shell identities msg buffers)
-  (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" :key (kernel-key shell))
+  (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" 
+      :key (kernel-key shell))
   (let ((content (parse-json-from-string (message-content msg))))
     (let ((code (afetch "code" content :test #'equal))) 
 
@@ -1094,14 +1205,17 @@ The INDENT can be given for beautiful/debugging output (default is NIL
               (pre-process code))
           
         ;; broadcast the code to connected frontends
-        (send-execute-code (kernel-iopub (shell-kernel shell)) msg execution-count code :key (kernel-key shell))
-	(when (and (consp results) (typep (car results) 'cl-jupyter-user::cl-jupyter-quit-obj))
+        (send-execute-code (kernel-iopub (shell-kernel shell)) 
+            msg execution-count code :key (kernel-key shell))
+	(when (and (consp results) 
+	    (typep (car results) 'cl-jupyter-user::cl-jupyter-quit-obj))
 	    ;;;;;;;;;;;;;;;; ===>(caaar results) = )quit
 	  ;; ----- ** request for shutdown ** -----
 	  (let ((reply (make-message msg "execute_reply" nil
 				     `(("status" . "abort")
 				       ("execution_count" . ,execution-count)))))
-	    (message-send (shell-socket shell) reply :identities identities :key (kernel-key shell)))
+	    (message-send (shell-socket shell) reply :identities identities 
+	       :key (kernel-key shell)))
 	  (return-from handle-execute-request nil))
 	;; ----- ** normal request ** -----
         ;; send the stdout
@@ -1111,27 +1225,30 @@ The INDENT can be given for beautiful/debugging output (default is NIL
               (setq stderr stdout) (setq stdout nil))
 ;;;              
         (when (and stdout (> (length stdout) 0))
-          (send-stream (kernel-iopub (shell-kernel shell)) msg "stdout" stdout :key (kernel-key shell)))
+          (send-stream (kernel-iopub (shell-kernel shell)) msg "stdout" stdout 
+              :key (kernel-key shell)))
         ;; send the stderr
         (when (and stderr (> (length stderr) 0))
-          (send-stream (kernel-iopub (shell-kernel shell)) msg "stderr" stderr :key (kernel-key shell)))
+          (send-stream (kernel-iopub (shell-kernel shell)) msg "stderr" stderr 
+              :key (kernel-key shell)))
 	
         ;; send the first result
 	(send-execute-result (kernel-iopub (shell-kernel shell)) 
 			     msg execution-count (car results) :key (kernel-key shell))
 	;; status back to idle
-	(send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" :key (kernel-key shell))
+	(send-status-update (kernel-iopub (shell-kernel shell)) msg "idle" 
+	    :key (kernel-key shell))
 	;; send reply (control)
 	(let ((reply (make-message msg "execute_reply" nil
 				   `(("status" . "ok")
 				     ("execution_count" . ,execution-count)
 				     ("payload" . ,(vector))))))
-	  (message-send (shell-socket shell) reply :identities identities :key (kernel-key shell))
+	  (message-send (shell-socket shell) reply :identities identities 
+	      :key (kernel-key shell))
 	  t)))))
 
 
-(defclass message-content ()
-  ()
+(defclass message-content ()()
   (:documentation "The base class of message contents."))
 
 
@@ -1161,23 +1278,28 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 	  (setf (slot-value kernel 'iopub) iopub)
           iopub)))))
 
+
 (defun send-status-starting (iopub session  &key (key nil))
   (let ((status-msg (make-orphan-message session "status" nil
 					  `(("execution_state" . "starting")))))
-    (message-send (iopub-socket iopub) status-msg :identities '("status") :key key)))
+    (message-send (iopub-socket iopub) status-msg 
+        :identities '("status") :key key)))
   
+
 (defun send-status-update (iopub parent-msg status  &key (key nil))
   (let ((status-content `((:execution--state . ,status))))
     (let ((status-msg (make-message parent-msg "status" nil
 				    `(("execution_state" . ,status)))))
-      (message-send (iopub-socket iopub) status-msg :identities '("status") :key key))))
+      (message-send (iopub-socket iopub) status-msg 
+          :identities '("status") :key key))))
+
 
 (defun send-execute-code (iopub parent-msg execution-count code &key (key nil))
   (let ((code-msg (make-message  parent-msg "execute_input" nil
 				 `(("code" . ,code)
 				   ("execution_count" . ,execution-count)))))
-    ;;(format t "content to send = ~W~%" (encode-json-to-string (message-content code-msg)))
-    (message-send (iopub-socket iopub) code-msg :identities '("execute_input") :key key)))
+    (message-send (iopub-socket iopub) code-msg 
+        :identities '("execute_input") :key key)))
 
 
 (defun send-execute-result (iopub parent-msg execution-count result  &key (key nil))
@@ -1186,20 +1308,24 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 				    `(("execution_count" . ,execution-count)
 				      ("data" . ,(display-object-data display-obj))
 				      ("metadata" . ())))))
-      (message-send (iopub-socket iopub) result-msg :identities '("execute_result") :key key))))
+      (message-send (iopub-socket iopub) result-msg 
+          :identities '("execute_result") :key key))))
+
 
 (defun send-stream (iopub parent-msg stream-name data  &key (key nil))
   (let ((stream-msg (make-message parent-msg "stream" nil
 				  `(("name" . ,stream-name)
 				    ("text" . ,data)))))
-    (message-send (iopub-socket iopub) stream-msg :identities `(,(format nil "stream.~W" stream-name)) :key key)))
+    (message-send (iopub-socket iopub) stream-msg 
+        :identities `(,(format nil "stream.~W" stream-name)) :key key)))
+
 
 ;;;;;;;;;;;;;;;
 ;;; Display ;;;
 ;;;;;;;;;;;;;;;
 
-
 (in-package #:cl-jupyter)
+
 
 (defun concstr (list)
 ;; concatenate a list of strings ; recall ~% = newline"
@@ -1209,7 +1335,6 @@ The INDENT can be given for beautiful/debugging output (default is NIL
      (dolist (item list)
        (if (stringp item)
          (format s "~a~%" item))))))
-
 
 
 (defclass display-object ()
@@ -1236,19 +1361,6 @@ to be displayed by the Fishbowl/IPython frontend."))
   (:documentation "Render the VALUE as a LATEX document."))
 
 
-(defparameter *pretex* (concstr (list 
-    "\\("        
-    "\\def\\sp{^}\\def\\sb{_}\\def\\leqno(#1){}"
-    "\\def\\erf{\\mathrm{erf}}\\def\\sinh{\\mathrm{sinh}}"
-    "\\def\\zag#1#2{{{\\left.{#1}\\right|}\\over{\\left|{#2}\\right.}}}"
-    "\\def\\csch{\\mathrm{csch}}"
-    "\\require{color}"
-    "\\)"
-)))
-
-(defparameter *type-format* 
-   "\\(\\\\[3ex]\\color{blue}\\scriptsize\\text{~A}\\)")
-
 (defun get-tex-with-type (result)
     (let ((tex (get-tex result)))
        (if (> (length tex) 0)
@@ -1257,13 +1369,27 @@ to be displayed by the Fishbowl/IPython frontend."))
                (concstr (list tex "\\(\\\\" ts "\\)")))) nil )))
 
 
-
-;;;
 ;;; New 0.9.5 (check if has Type: FileName)
-;;;
 (defun filename-type-p (value)
   (if (has-type value)
     (if (string-equal (get-type value) "FileName") t nil) nil))  
+
+;;; 0.9.7
+(defun string-type-p (value)
+  (if (has-type value)
+    (if (string-equal (get-type value) "String") t nil) nil))
+
+;;; A string like "$HTML$abcde...." will be recogniced as HTML string
+;;; recall get-value=caar value 
+;;; Note form: "\"$HTML$.....\""
+;;; We will use +HTML-PREFIX+ = "$HTML$" as default but we may change it
+;;; therefore ...
+(defun html-string-p (value)
+  (and (string-type-p value)
+    (string-equal (subseq 
+        (string-left-trim '(#\Space) 
+           (caar value)) 1 (+ 1 (length +HTML-PREFIX+))) +HTML-PREFIX+)))
+
 
 
 (defmethod render-latex ((value t))
@@ -1272,9 +1398,9 @@ to be displayed by the Fishbowl/IPython frontend."))
          (if boot::|$texFormat|
            (if (has-type value)
              (let ((ts (get-type value)))
-               (concstr (list *pretex* 
+               (concstr (list +TEX-PREFIX+ 
                   (format nil "~A" tex) 
-                  (format nil *type-format* ts)))) nil)))))
+                  (format nil +TEX-TYPE-FORMAT+ ts)))) nil)))))
          
          
 (defgeneric render-png (value)
@@ -1282,11 +1408,9 @@ to be displayed by the Fishbowl/IPython frontend."))
  encoding is a Base64-encoded string."))
 
 
-;;;
 ;;; catch specific type (e.g. FileName) then act and return "png-file" 
 ;;; => base64 conversion => inline display (principle hold for all rend's)
 ;;; !!! check existence && filetype
-;;;
 
 (defmethod render-png ((value t))
   (if (filename-type-p value)
@@ -1303,13 +1427,13 @@ to be displayed by the Fishbowl/IPython frontend."))
   (:documentation "Render the VALUE as a JPEG image. The expected
  encoding is a Base64-encoded string."))
 
+
 (defmethod render-jpeg ((value t))
   ;; no rendering yet
   nil)
 
-;;;
+
 ;;; New 0.9.5 (render coerced ::FileType)
-;;;
 (defun render-filename (value file-type)
   (if (filename-type-p value) 
     (let* ((filename (string-trim "\" " (caar value))))
@@ -1321,37 +1445,53 @@ to be displayed by the Fishbowl/IPython frontend."))
 
 
 (defgeneric render-svg (value)
-  (:documentation "Render the VALUE as a SVG image (XML format represented as a string)."))
+  (:documentation 
+     "Render the VALUE as a SVG image (XML format represented as a string)."))
+
 
 (defmethod render-svg ((value t))
   (render-filename value "svg"))
                
+
 (defgeneric render-json (value)
-  (:documentation "Render the VALUE as a JSON document. This uses the MYJSON encoding
+  (:documentation 
+    "Render the VALUE as a JSON document. This uses the MYJSON encoding
  (alist with string keys)"))
+
 
 (defmethod render-json ((value t))
   (render-filename value "json"))
-                    
+
+
 (defgeneric render-javascript (value)
-  (:documentation "Render the VALUE as a JAVASCRIPT source (represented as a string)."))
+  (:documentation 
+      "Render the VALUE as a JAVASCRIPT source (represented as a string)."))
 
 (defmethod render-javascript ((value t))
   (render-filename value "js"))
 
+
 (defgeneric render-html (value)
   (:documentation "Render the VALUE as an HTML document (represented as a sting)."))
 
-(defmethod render-html ((value t))
-  (render-filename value "html"))
+;;;
+;;; Either render html file (if Type: Filename) or render a string of
+;;; the form "$HTML$......"
+;;;
+(defmethod render-html ((value t))   
+  (if (html-string-p value) 
+    (subseq (string-right-trim "\"" (string-left-trim '(#\Space) 
+       (caar value))) (+ 1 (length +HTML-PREFIX+))) 
+       (render-filename value "html"))) ;; <- else
+
 
 (defgeneric render-markdown (value)
   (:documentation "Render the VALUE as MARDOWN text."))
 
+
 (defmethod render-markdown ((value t))
    (render-filename value "md"))
 
-;;; end render
 
 (defun combine-render (pairs)
   (loop 
@@ -1359,57 +1499,69 @@ to be displayed by the Fishbowl/IPython frontend."))
      when (not (null (cdr pair)))
    collect pair))
 
+
 (defun display-dispatch (value render-alist)
   (if (typep value 'display-object)
       value ; already displayed
       ;; otherwise needs to display
-      (let ((data (combine-render (cons `("text/plain" . ,(render-plain value)) ; at least text/plain encoding is required
+      (let ((data (combine-render 
+         (cons `("text/plain" . ,(render-plain value)) 
 					render-alist))))
 	(make-instance 'display-object :value value :data data))))
 
 
 (defun display (value)
   "Display VALUE in all supported representations."
-  (display-dispatch value  `(("text/html" . ,(render-html value))
-			     ("text/markdown" . ,(render-markdown value))
-			     ("text/latex" . ,(render-latex value))
-			     ("image/png" . ,(render-png value))
-			     ("image/jpeg" . ,(render-jpeg value))
-			     ("image/svg+xml" . ,(render-svg value))
-			     ("application/json" . ,(render-json value))
-			     ("application/javascript" . ,(render-javascript value)))))
+  (display-dispatch value  
+     `(("text/html" . ,(render-html value))
+	   ("text/markdown" . ,(render-markdown value))
+	   ("text/latex" . ,(render-latex value))
+	   ("image/png" . ,(render-png value))
+	   ("image/jpeg" . ,(render-jpeg value))
+	   ("image/svg+xml" . ,(render-svg value))
+	   ("application/json" . ,(render-json value))
+	   ("application/javascript" . ,(render-javascript value)))))
+
 
 (defun display-html (value)
   "Display VALUE as HTML."
   (display-dispatch value `(("text/html" . ,(render-html value)))))
 
+
 (defun display-markdown (value)
   "Display VALUE as MARDOWN text."
   (display-dispatch value `(("text/markdown" . ,(render-markdown value)))))
+
 
 (defun display-latex (value)
   "Display VALUE as a LATEX document."
   (display-dispatch value `(("text/latex" . ,(render-latex value)))))
 
+
 (defun display-png (value)
   "Display VALUE as a PNG image."
   (display-dispatch value `(("image/png" . ,(render-png value)))))
+
 
 (defun display-jpeg (value)
   "Display VALUE as a JPEG image."
   (display-dispatch value `(("image/jpeg" . ,(render-jpeg value)))))
 
+
 (defun display-svg (value)
   "Display VALUE as a SVG image."
   (display-dispatch value `(("image/svg+xml" . ,(render-svg value)))))
+
 
 (defun display-json (value)
   "Display VALUE as a JSON document."
   (display-dispatch value `(("application/json" . ,(render-json value)))))
 
+
 (defun display-javascript (value)
   "Display VALUE as embedded JAVASCRIPT."
   (display-dispatch value `(("application/javascript" . ,(render-javascript value)))))
+
 
 ;;;;;;;;;;;;;;;;;
 ;;; Evaluator ;;;
@@ -1430,11 +1582,14 @@ to be displayed by the Fishbowl/IPython frontend."))
           (setq boot::|$texOutputStream| save)
             (list alg tex)))))
 
-
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; DATA FORMAT
+;;; ===========
 ;;; result = ( (strings) string )
 ;;; cadr .... tex output string
 ;;; car ..... list alg output, last is type
-
+;;; what if "types" off? Hm, not optimal.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun has-type (result)
     (let ((ts (string-trim " " (car(last (car result))))))
@@ -1455,7 +1610,6 @@ to be displayed by the Fishbowl/IPython frontend."))
     (cadr result))
 
 
-
 (defclass evaluator ()
   ((kernel :initarg :kernel :reader evaluator-kernel)
    (history-in :initform (make-array 64 :fill-pointer 0 :adjustable t)
@@ -1463,8 +1617,10 @@ to be displayed by the Fishbowl/IPython frontend."))
    (history-out :initform (make-array 64 :fill-pointer 0 :adjustable t)
 		:reader evaluator-history-out)))
 
+
 ;;; clj 220d037
 (defvar *evaluator* nil)
+
 
 (defun make-evaluator (kernel)
   (let ((evaluator (make-instance 'evaluator
@@ -1475,7 +1631,7 @@ to be displayed by the Fishbowl/IPython frontend."))
 
 ;;; macro taken from: http://www.cliki.net/REPL
 ;;; modified to handle warnings correctly 
-(defmacro handling-errors (&body body)
+(defmacro handling-errors-000 (&body body)
   `(handler-case (progn ,@body)
      (simple-condition (err) 
        (format *error-output* "~&~A: ~%" (class-name (class-of err)))
@@ -1487,8 +1643,8 @@ to be displayed by the Fishbowl/IPython frontend."))
        (format *error-output* "~&~A: ~%  ~S~%"
                (class-name (class-of err)) err))))
 
-;;; new version 3a2e8f7 (deferred)
-(defmacro handling-errors-2 (&body body)
+;;; new version 3a2e8f7 + 71200db
+(defmacro handling-errors (&body body)
   `(handler-case
        (handler-bind ((simple-warning
 		       #'(lambda (wrn)
@@ -1510,7 +1666,7 @@ to be displayed by the Fishbowl/IPython frontend."))
               (simple-condition-format-control   err)
               (simple-condition-format-arguments err))
        (format *error-output* "~&"))
-     (condition (err)
+     (serious-condition (err) 
        (format *error-output* "~&~A: ~%  ~S~%"
                (class-name (class-of err)) err))))
 
@@ -1522,19 +1678,20 @@ to be displayed by the Fishbowl/IPython frontend."))
   ;;(vector-push-extend code (evaluator-history-in evaluator))
   (let ((execution-count (length (evaluator-history-in evaluator))))
     (let ((code-to-eval code))
-      (let* ((stdout-str (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
-	     (stderr-str (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t)))
+      (let* ((stdout-str (make-array 0 
+                :element-type 'character :fill-pointer 0 :adjustable t))
+	     (stderr-str (make-array 0 
+	            :element-type 'character :fill-pointer 0 :adjustable t)))
 	 (let ((results (with-output-to-string (stdout stdout-str)
 	    (with-output-to-string (stderr stderr-str)
 	      (let ((*standard-output* stdout) (*error-output* stderr))
 	          (if (or (starts-with-p code ")co") 
 	                  (starts-with-p code ")lib")
-	                  (not *cl-guard*))
+	                  (not +ISPAD-GUARD+))
 	             (multiple-value-list (ispad-eval code)) 
 		         (handling-errors
 		           (let ((*evaluator* evaluator))       
-			         (multiple-value-list (ispad-eval code))))) 
-   ))))) 
+			         (multiple-value-list (ispad-eval code)))))))))) 
    ;;EVAL
    (vector-push-extend code (evaluator-history-in evaluator))
    (vector-push-extend results (evaluator-history-out evaluator))
@@ -1549,9 +1706,9 @@ to be displayed by the Fishbowl/IPython frontend."))
 (in-package #:cl-jupyter-user)
 
 
-(defclass cl-jupyter-quit-obj ()
-  ()
-  (:documentation "A quit object for identifying a request for kernel shutdown."))
+(defclass cl-jupyter-quit-obj () ()
+  (:documentation 
+      "A quit object for identifying a request for kernel shutdown."))
 
 
 (defun quit ()
@@ -1594,8 +1751,10 @@ to be displayed by the Fishbowl/IPython frontend."))
   ;  (format str "~A" (html-text doc))))
 
   
-(defun html (text)
-  (display-html (make-instance 'html-text :text text)))
+(defun html (text) (display-html text))
+  ;;;(display-html (make-instance 'html-text :text text)))
+  ;;; not very nice but convenient for the moment ;) 
+  ;;; later we'll rewrite the whole stuff using CLOS
 
 
 (defclass png-bytes ()
@@ -1631,14 +1790,17 @@ to be displayed by the Fishbowl/IPython frontend."))
 ;;; History management
 
 (defun %in (hist-ref)
-  (let ((history-in (slot-value cl-jupyter::*evaluator* 'cl-jupyter::history-in)))
+  (let ((history-in (slot-value 
+           cl-jupyter::*evaluator* 'cl-jupyter::history-in)))
     (if (and (>= hist-ref 0)
 	     (< hist-ref (length history-in))) 
 	(aref history-in hist-ref)
 	nil)))
 
+
 (defun %out (hist-ref &optional (value-ref 0))
-  (let ((history-out (slot-value cl-jupyter::*evaluator* 'cl-jupyter::history-out)))
+  (let ((history-out (slot-value 
+          cl-jupyter::*evaluator* 'cl-jupyter::history-out)))
     (if (and (>= hist-ref 0)
 	     (< hist-ref (length history-out)))
 	(let ((out-values  (aref history-out hist-ref)))
@@ -1646,7 +1808,6 @@ to be displayed by the Fishbowl/IPython frontend."))
 		   (< value-ref (length out-values))) 
 	      (elt out-values value-ref)
 	      nil)))))
-
 
 
 ;;;;;;;;;;;;;;
@@ -1678,7 +1839,7 @@ to be displayed by the Fishbowl/IPython frontend."))
 (defun get-argv ()
   ;; Borrowed from apply-argv, command-line-arguments.  Temporary solution (?)
   #+sbcl (cdr sb-ext:*posix-argv*)
-  #+clozure CCL:*UNPROCESSED-COMMAND-LINE-ARGUMENTS*  ;(ccl::command-line-arguments)
+  #+clozure CCL:*UNPROCESSED-COMMAND-LINE-ARGUMENTS*  
   #+gcl si:*command-args*
   #+ecl (loop for i from 0 below (si:argc) collect (si:argv i))
   #+cmu extensions:*command-line-strings*
@@ -1706,19 +1867,18 @@ to be displayed by the Fishbowl/IPython frontend."))
    'string ""
    (join (format nil "~%") '("cl-jupyter V???"))))
 
-;; (format t (banner))
-
-
 
 (defclass kernel-config ()
   ((transport :initarg :transport :reader config-transport :type string)
    (ip :initarg :ip :reader config-ip :type string)
    (shell-port :initarg :shell-port :reader config-shell-port :type fixnum)
    (iopub-port :initarg :iopub-port :reader config-iopub-port :type fixnum)
-   (control-port :initarg :control-port :reader config-control-port :type fixnum)
+   (control-port :initarg :control-port 
+      :reader config-control-port :type fixnum)
    (stdin-port :initarg :stdin-port :reader config-stdin-port :type fixnum)
    (hb-port :initarg :hb-port :reader config-hb-port :type fixnum)
-   (signature-scheme :initarg :signature-scheme :reader config-signature-scheme :type string)
+   (signature-scheme :initarg :signature-scheme 
+       :reader config-signature-scheme :type string)
    (key :initarg :key :reader kernel-config-key))) 
 
 
@@ -1727,17 +1887,19 @@ to be displayed by the Fishbowl/IPython frontend."))
     ;(princ (banner))
     (write-line "")
     (format t "iSPAD V~A, Jupyter kernel based on ~%" +ISPAD-VERSION+)
-    (format t "~A: an enhanced interactive Common Lisp REPL~%" +KERNEL-IMPLEMENTATION-NAME+)
+    (format t "~A: an enhanced interactive Common Lisp REPL~%" 
+        +KERNEL-IMPLEMENTATION-NAME+)
     (format t "(Version ~A - Jupyter protocol v.~A)~%"
             +KERNEL-IMPLEMENTATION-VERSION+
             +KERNEL-PROTOCOL-VERSION+)
-    (format t "--> (C) 2014-2015 Frederic Peschanski (cf. LICENSE)~%")
+    (format t "--> (C) 2014-2015 Frederic Peschanski ~%")
     (write-line "")
     (let ((connection-file-name connect-file))
       ;; (format t "connection file = ~A~%" connection-file-name)
       (unless (stringp connection-file-name)
         (error "Wrong connection file argument (expecting a string)"))
-      (let ((config-alist (parse-json-from-string (concat-all 'string "" (read-file-lines connection-file-name)))))
+      (let ((config-alist (parse-json-from-string 
+          (concat-all 'string "" (read-file-lines connection-file-name)))))
         ;; (format t "kernel configuration = ~A~%" config-alist)
         (let ((config
                (make-instance 'kernel-config
@@ -1745,17 +1907,20 @@ to be displayed by the Fishbowl/IPython frontend."))
                    :ip (afetch "ip" config-alist :test #'equal)
                    :shell-port (afetch "shell_port" config-alist :test #'equal)
                    :iopub-port (afetch "iopub_port" config-alist :test #'equal)
-                   :control-port (afetch "control_port" config-alist :test #'equal)
+                   :control-port (afetch "control_port" config-alist 
+                       :test #'equal)
                    :hb-port (afetch "hb_port" config-alist :test #'equal)
-                   :signature-scheme (afetch "signature_scheme" config-alist :test #'equal)           
-                   :key (let ((str-key (afetch "key" config-alist :test #'equal)))
+                   :signature-scheme (afetch "signature_scheme" config-alist 
+                       :test #'equal)           
+                   :key (let ((str-key (afetch "key" config-alist 
+                                   :test #'equal)))
                      (if (string= str-key "")
                        nil
                       (babel:string-to-octets str-key :encoding :ASCII))))))
-          (when (not (string= (config-signature-scheme config) "hmac-sha256"))
+      (when (not (string= (config-signature-scheme config) "hmac-sha256"))
             ;; XXX: only hmac-sha256 supported
-            (error "Kernel only support signature scheme 'hmac-sha256' (provided ~S)" (config-signature-scheme config)))
-               
+      (error "Kernel only support signature scheme 'hmac-sha256' (provided ~S)" 
+        (config-signature-scheme config)))            
           ;;(inspect config)
           (let* ((kernel (make-kernel config))
                  (evaluator (make-evaluator kernel))
@@ -1814,7 +1979,7 @@ to be displayed by the Fishbowl/IPython frontend."))
 
 (in-package #:cl-jupyter)
 
-;;;+NEW
+
 (defparameter ax-tokens
 '("AND" "Aleph" "An" "And" "B1solve"  "BY"  "BasicMethod"  "Beta"  "BumInSepFFE"
 "Chi" "Ci" "D" "Delta" "DiffAction" "DiffC" "EQ" "EXPRR2F"  "Ei"  "F"  "F2EXPRR"
