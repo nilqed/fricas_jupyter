@@ -126,6 +126,14 @@ There is a docker image at https://hub.docker.com/r/nilqed/fricas_jupyter/
     New -> FriCAS
 
 
+#### Notebooks 
+A lot of notebooks (converted from the .input files) can be found at
+https://github.com/nilqed/fricas_input
+
+Have a look into the folder nb/fricas_input/nbconvert.ipynb/ where one
+can render a notebook by clicking.
+
+
 ---
 Development: [iSPAD](https://bitbucket.org/kfp/ispad) 
 
