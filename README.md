@@ -10,7 +10,13 @@ Frederic Peschanski's [cl-jupyter](https://github.com/fredokun/cl-jupyter).
 * [SBCL 1.2.x](http://www.sbcl.org/) for Linux, `SBCL_HOME` set!
 * [Jupyter](https://jupyter.org/), check with `$jupyter --paths`
 
-Tested on Ubuntu 14+. If you are lacking some of the items above, consult the
+**Note**: The version of SBCL must match that of which FriCAS has been compiled!
+This is so because SBCL cannot load cores (AxiomSYS in this case) of different
+versions. See `FAQ` (further below) how to get type/version of FriCAS' 
+underlying Lisp. By the way there will be no harm to your existing FriCAS 
+installation ;)    
+
+Tested on Ubuntu 14+. If you are missing some of the items above then consult the
 links given to get installation information. The `install.sh` script
 is going to check all the prerequisites and will `exit` in case of missing items,
 thereby issuing an error number `[n]` which might help to fix (see below).
