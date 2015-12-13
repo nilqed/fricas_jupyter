@@ -129,8 +129,8 @@ There is a docker image at https://hub.docker.com/r/nilqed/fricas_jupyter/
 #### Documentation
 In preparation.
 
-You will find chapter 1 of the `book` as notebook (sections) in the folder
-https://github.com/nilqed/fricas_input/nb/ug. 
+You will find chapter 1 of the `book` as notebook (sections) at
+[nb/ug](https://github.com/nilqed/fricas_input). 
 
 
 #### Notebooks 
