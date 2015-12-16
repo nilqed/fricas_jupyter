@@ -189,6 +189,9 @@
 ;;;     and injecting JS libraries is no option at all.
 ;;;     Since Gnuplot has improved (mousable html5 canvas, svg) one should
 ;;;     consider to extend GnuDraw.
+;;;   - New: defparameter +WHITESPACE+
+;;;     Section SHELL: function handle-execute-request: string-left-trim of 
+;;;     stdout to avoid excessive linefeeds.
 ;;;     
 ;;;
 ;;;   Version 1.0
@@ -313,7 +316,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 (defparameter +TEX-TYPE-FORMAT+ 
    "\\(\\\\[3ex]\\color{blue}\\scriptsize\\text{~A}\\)")
 
-
+(defparameter +WHITESPACE+ '(#\Space #\Newline #\Tab))
 
 
 ;;;;;;;;;;;;;
@@ -1193,7 +1196,6 @@ The INDENT can be given for beautiful/debugging output (default is NIL
       (t (code-to-eval code))))
 
 
-
 (defun handle-execute-request (shell identities msg buffers)
   (send-status-update (kernel-iopub (shell-kernel shell)) msg "busy" 
       :key (kernel-key shell))
@@ -1220,11 +1222,12 @@ The INDENT can be given for beautiful/debugging output (default is NIL
 	;; ----- ** normal request ** -----
         ;; send the stdout
 
-;;;+NEW Hook for error handling (stdout <--> sterr) : (...) = has-error
-         (when (string-equal (caaar results) "error") 
+        ;; Hook for error handling (stdout <--> sterr) 
+        (when (string-equal (caaar results) "error") 
               (setq stderr stdout) (setq stdout nil))
-;;;              
+     
         (when (and stdout (> (length stdout) 0))
+          (setq stdout (string-left-trim +WHITESPACE+ stdout)) 
           (send-stream (kernel-iopub (shell-kernel shell)) msg "stdout" stdout 
               :key (kernel-key shell)))
         ;; send the stderr
