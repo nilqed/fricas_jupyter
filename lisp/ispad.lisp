@@ -1388,10 +1388,11 @@ to be displayed by the Fishbowl/IPython frontend."))
 ;;; We will use +HTML-PREFIX+ = "$HTML$" as default but we may change it
 ;;; therefore ...
 (defun html-string-p (value)
-  (and (string-type-p value)
-    (string-equal (subseq 
+  (if (< (length value) (length +HTML-PREFIX+)) nil
+    (and (string-type-p value)
+      (string-equal (subseq 
         (string-left-trim '(#\Space) 
-           (caar value)) 1 (+ 1 (length +HTML-PREFIX+))) +HTML-PREFIX+)))
+           (caar value)) 1 (+ 1 (length +HTML-PREFIX+))) +HTML-PREFIX+))))
 
 
 
