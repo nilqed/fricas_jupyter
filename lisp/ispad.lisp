@@ -1382,17 +1382,28 @@ to be displayed by the Fishbowl/IPython frontend."))
   (if (has-type value)
     (if (string-equal (get-type value) "String") t nil) nil))
 
-;;; A string like "$HTML$abcde...." will be recogniced as HTML string
+;;; A string like "$HTML$abcde...." will be recognised as HTML string
 ;;; recall get-value=caar value 
 ;;; Note form: "\"$HTML$.....\""
 ;;; We will use +HTML-PREFIX+ = "$HTML$" as default but we may change it
 ;;; therefore ...
-(defun html-string-p (value)
+(defun html-string-p-2 (value)
   (if (< (length value) (length +HTML-PREFIX+)) nil
     (and (string-type-p value)
       (string-equal (subseq 
         (string-left-trim '(#\Space) 
            (caar value)) 1 (+ 1 (length +HTML-PREFIX+))) +HTML-PREFIX+))))
+
+(defun html-string-p (value)
+  (if (not (string-type-p value)) nil
+    (let ((str (string-left-trim '(#\Space) (caar value))))
+       (if (> (length str) (length +HTML-PREFIX+))
+         (string-equal 
+            (subseq str 1 (+ 1 (length +HTML-PREFIX+))) +HTML-PREFIX+)
+               nil))))
+      
+    
+       
 
 
 
