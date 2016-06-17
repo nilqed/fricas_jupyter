@@ -8,7 +8,7 @@ Frederic Peschanski's [cl-jupyter](https://github.com/fredokun/cl-jupyter).
 
 * [FriCAS](http://fricas.sourceforge.net/) installed, SBCL version 
 * [SBCL 1.2.x](http://www.sbcl.org/) for Linux, `SBCL_HOME` set!
-* [Jupyter](https://jupyter.org/), check with `$jupyter --paths`
+* [Jupyter 4.1+](https://jupyter.org/), check with `$jupyter --paths`
 
 **Note**: The version of SBCL must match that of which FriCAS has been compiled!
 This is so because SBCL cannot load cores (AxiomSYS in this case) of different
@@ -146,6 +146,12 @@ https://github.com/nilqed/fricas_input
 Have a look into the folder nb/fricas_input/nbconvert.ipynb/ where one
 can render a notebook by clicking.
 
+
+#### Update 
+17-JUN-2016 : pzmq -- https://github.com/orivej/pzmq.git
+
+Change in the size of the message structure, zmq_msg_t, in 0MQ version 4.1.x 
+to 64 bytes from a size of 32 bytes in version 4.0.x.
 
 ---
 Development: [iSPAD](https://bitbucket.org/kfp/ispad) 
