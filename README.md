@@ -127,7 +127,7 @@ There is a docker image at https://hub.docker.com/r/nilqed/fricas_jupyter/
 
 
     docker pull nilqed/fricas_jupyter
-    docker run -p 443:8888  -t -i nilqed/fricas_jupyter jupyter notebook
+    docker run -p 443:8888  -t -i nilqed/fricas_jupyter jupyter notebook --ip=*
     go to http://localhost:443
     New -> FriCAS
 
