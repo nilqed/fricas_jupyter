@@ -9,6 +9,7 @@ Frederic Peschanski's [cl-jupyter](https://github.com/fredokun/cl-jupyter).
 * [FriCAS](http://fricas.sourceforge.net/) installed, SBCL version 
 * [SBCL 1.2.x](http://www.sbcl.org/) for Linux, `SBCL_HOME` set!
 * [Jupyter 4.1+](https://jupyter.org/), check with `$jupyter --paths`
+* libzmq4
 
 **Note**: The version of SBCL must match that of which FriCAS has been compiled!
 This is so because SBCL cannot load cores (AxiomSYS in this case) of different
@@ -152,6 +153,11 @@ can render a notebook by clicking.
 
 Change in the size of the message structure, zmq_msg_t, in 0MQ version 4.1.x 
 to 64 bytes from a size of 32 bytes in version 4.0.x.
+
+17-DEC-2016 : libzmq --  https://gist.github.com/cdjhlee/b8e3c927a01b0948b42d
+
+Note: you will need libzmq.so.4 (the script at the link above might help).
+libzmq5/xenial proably won't work with pzqm.
 
 ---
 Development: [iSPAD](https://bitbucket.org/kfp/ispad) 
