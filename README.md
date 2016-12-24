@@ -157,7 +157,7 @@ to 64 bytes from a size of 32 bytes in version 4.0.x.
 17-DEC-2016 : libzmq --  https://gist.github.com/cdjhlee/b8e3c927a01b0948b42d
 
 Note: you will need libzmq.so.4 (the script at the link above might help).
-libzmq5/xenial proably won't work with pzqm.
+libzmq5/xenial probably won't work with pzqm.
 
 ---
 Development: [iSPAD](https://bitbucket.org/kfp/ispad) 
