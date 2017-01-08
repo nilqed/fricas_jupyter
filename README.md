@@ -9,7 +9,7 @@ Frederic Peschanski's [cl-jupyter](https://github.com/fredokun/cl-jupyter).
 * [FriCAS](http://fricas.sourceforge.net/) installed, SBCL version 
 * [SBCL 1.2.x](http://www.sbcl.org/) for Linux, `SBCL_HOME` set!
 * [Jupyter 4.1+](https://jupyter.org/), check with `$jupyter --paths`
-* libzmq4
+* libzmq4  ** (see `Update` section at the end!)
 
 **Note**: The version of SBCL must match that of which FriCAS has been compiled!
 This is so because SBCL cannot load cores (AxiomSYS in this case) of different
@@ -19,8 +19,9 @@ installation ;)
 
 Tested on Ubuntu 14+. If you are missing some of the items above then consult the
 links given to get installation information. The `install.sh` script
-is going to check all the prerequisites and will `exit` in case of missing items,
-thereby issuing an error number `[n]` which might help to fix (see below).
+is going to check all the prerequisites (except libzmq4) and will `exit` in 
+case of missing items, thereby issuing an error number `[n]` which might help 
+to fix some issues (see below).
 
 #### Installation
 
@@ -157,7 +158,8 @@ to 64 bytes from a size of 32 bytes in version 4.0.x.
 17-DEC-2016 : libzmq --  https://gist.github.com/cdjhlee/b8e3c927a01b0948b42d
 
 Note: you will need libzmq.so.4 (the script at the link above might help).
-libzmq5/xenial probably won't work with pzqm.
+libzmq5/xenial probably won't work because `pzmq` only supports
+ZeroMQ 4.0 bindings at the moment (see @link in the previous entry). 
 
 ---
 Development: [iSPAD](https://bitbucket.org/kfp/ispad) 
